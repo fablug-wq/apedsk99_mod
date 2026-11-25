@@ -3,6 +3,93 @@ File DSKx;                                                                      
 File SDdir;                                                                                           //file pointer for SD directory listing
 File PRTfile;                                                                                         //PIO virtual printer output file (APEDSKPR DSR)
 
+//PIO / RS232 options (from device name at OPEN) and control code filter state
+#define PRT_TX  0x01                                                                                  //.TX: filter printer control codes
+#define PRT_CR  0x02                                                                                  //.CR: no CR at end of record
+#define PRT_LF  0x04                                                                                  //.LF: no LF at end of record
+byte PRTmode         = 0;                                                                             //active options
+byte PRTst           = 0;                                                                             //filter state: 0 text, 1 ESC, 2 params, 3 until NUL, 4 graphics header, 5 graphics data
+byte PRTcmd          = 0;                                                                             //current ESC command
+byte PRThdr          = 0;                                                                             //graphics header byte counter
+byte PRTgm           = 0;                                                                             //ESC * graphics mode
+unsigned int PRTcnt  = 0;                                                                             //bytes left to skip
+
+//.TX filter: keep printable text, TAB, CR, LF and FF; drop other control codes and Epson ESC/P sequences
+void PRTfilter( byte cc ) {
+  switch ( PRTst ) {
+    case 0:                                                                                           //plain text
+      if ( cc == 0x1B ) {
+        PRTst = 1;                                                                                    //ESC: command follows
+      } else {
+        if ( cc >= 0x80 ) {
+          cc &= 0x7F;                                                                                 //Epson italic set -> normal characters
+        }
+        if ( (cc >= 0x20 && cc != 0x7F) || cc == 0x09 || cc == 0x0A || cc == 0x0C || cc == 0x0D ) {
+          PRTfile.write( cc );
+        }
+      }
+      break;
+
+    case 1:                                                                                           //ESC command letter
+      PRTcmd = cc;
+      PRThdr = 0;
+      PRTst  = 0;                                                                                     //default: command without parameters
+      if ( cc != 0 ) {
+        if ( strchr_P( PSTR("KLYZ*"), cc ) ) {                                                        //bit image graphics
+          PRTst = 4;
+        } else if ( strchr_P( PSTR("BDb"), cc ) ) {                                                   //tab lists, terminated by NUL
+          PRTst = 3;
+        } else if ( strchr_P( PSTR("$\\ef?"), cc ) ) {                                                //two parameters
+          PRTcnt = 2;
+          PRTst  = 2;
+        } else if ( strchr_P( PSTR("-WQlC3AJNSRxkp!Uwrjas/+tImq"), cc ) ) {                           //one parameter
+          PRTcnt = 1;
+          PRTst  = 2;
+        }
+      }
+      break;
+
+    case 2:                                                                                           //skip parameters
+      if ( PRTcmd == 'C' && cc == 0 ) {                                                               //ESC C NUL n: page length in inches, one more byte
+        PRTcmd = 0;
+      } else if ( --PRTcnt == 0 ) {
+        PRTst = 0;
+      }
+      break;
+
+    case 3:                                                                                           //skip until NUL
+      if ( cc == 0 ) {
+        PRTst = 0;
+      }
+      break;
+
+    case 4:                                                                                           //graphics header: [m] n1 n2
+      if ( PRTcmd == '*' && PRThdr == 0 ) {
+        PRTgm = cc;                                                                                   //ESC * m
+      } else if ( PRThdr == ( PRTcmd == '*' ? 1 : 0 ) ) {
+        PRTcnt = cc;                                                                                  //n1
+      } else {
+        PRTcnt += (unsigned int)cc << 8;                                                              //n2: # of columns
+        if ( PRTcmd == '*' ) {
+          if ( PRTgm >= 64 ) {
+            PRTcnt *= 6;                                                                              //48 dots / column
+          } else if ( PRTgm >= 32 ) {
+            PRTcnt *= 3;                                                                              //24 dots / column
+          }
+        }
+        PRTst = ( PRTcnt != 0 ) ? 5 : 0;
+      }
+      PRThdr++;
+      break;
+
+    case 5:                                                                                           //skip graphics data
+      if ( --PRTcnt == 0 ) {
+        PRTst = 0;
+      }
+      break;
+  }
+}
+
 //flags for "drives" (aka DOAD files) available 
 boolean activeDSK[3]  = {false, false, false};                                                        //DSKx active flag
 char DSKfolder[10]     = "DISKS/\0";                                                                   //root folder name

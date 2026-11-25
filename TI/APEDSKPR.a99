@@ -12,7 +12,7 @@
 * github.com/jambuur/APEDSK99
 *
 * v12s: support for Double Density / 80 tracks (max 1440 AU's); CALL LINK for XB, E/A and MM
-* APEDSKPR: reduced CALL set (LDSK MDSK ADSR CDIR SMAP LDIR) + PIO virtual printer
+* APEDSKPR v12p: reduced CALL set (LDSK MDSK AHLP ADSR CDIR SMAP LDIR) + PIO/RS232 virtual printer
 *================================================================================================================
 DSKPRM	EQU     >5FB4                   per DSKx: Mbyte #sectors, Lbyte #sectors, #sectors/track, #tracks, #sides
 CALLST  EQU	>5FC6                   CALL() execution status: finished, still active, error
@@ -79,7 +79,7 @@ SUB08	DATA	SUB09
 	TEXT	'FILES'			same as >16, called from Basic
 *
 PATTBL	DATA	>0400			TI BASIC VDP RAM address for Pattern Table
-AVERSN	TEXT	'v12s'			APEDSK99 version string (ARST)
+AVERSN	TEXT	'v12p'			APEDSK99 version string (ARST)
 *
 XEMRET	DATA	>0000			CALL LINK return address
 XEMJMP	DATA	XEMUST			XBAS, E/A, MM: PDSK / UDSK/ LDSK
@@ -98,21 +98,26 @@ SUB10	DATA	SUB11
 	TEXT	'MDSK'			Map DOAD to DSKx
 	EVEN
 SUB11	DATA	SUB12
+	DATA	AHLP
+	BYTE	>04
+	TEXT	'AHLP'			APEDSKPR help screen (CALLHLPP.TXT)
+	EVEN
+SUB12	DATA	SUB13
 	DATA	ADSR
 	BYTE	>04
 	TEXT	'ADSR'			APEDSK99 DSR load / initialise / set default
 	EVEN
-SUB12	DATA	SUB13
+SUB13	DATA	SUB14
 	DATA	CDIR
 	BYTE	>04
 	TEXT	'CDIR'			Change working /Folder
 	EVEN
-SUB13	DATA	SUB14
+SUB14	DATA	SUB15
 	DATA	SMAP
 	BYTE	>04
 	TEXT	'SMAP'			Show DOAD mappings for DSK[1-3] + available working /Folders
 	EVEN
-SUB14	DATA	>0000
+SUB15	DATA	>0000
 	DATA	LDIR
 	BYTE	>04
 	TEXT	'LDIR'			List DOAD files on SD card
@@ -141,10 +146,15 @@ DSR04	DATA	DSR05
 	BYTE	>04			
 	TEXT	'DSK3'			
 	EVEN		
-DSR05	DATA	>0000			no more
+DSR05	DATA	DSR06
 	DATA	EPIO			virtual printer
 	BYTE	>03
 	TEXT	'PIO'
+	EVEN
+DSR06	DATA	>0000			no more
+	DATA	EPIO			same virtual printer (output only)
+	BYTE	>05
+	TEXT	'RS232'
 	EVEN
 *
 *=====================================
@@ -3030,6 +3040,8 @@ CDIR	LI	R6,>2400		change root folder
 * no parameters	->3x00
 SMAP	LI	R6,>3000		Show DSKx mapping ACOMND
 	JMP	ACLPRP			generic prep
+AHLP	LI	R6,>3200		display help screen (Arduino picks CALLHLPP.TXT for v12p)
+	JMP	ACLPRP			generic prep
 LDIR	LI	R6,>3100		List SD dir ACOMND
 *
 * Generic prep and return to TI BASIC for APEDSK99 CALL's
@@ -3292,10 +3304,10 @@ GXRTN	MOVB	@SAVGRA,@>9C02		and ... we're back; restore saved GROM address
 * 		
 *
 *===================================================================================
-* PIO: virtual printer (APEDSKPR)
+* PIO / RS232: virtual printer (APEDSKPR), output only
 * Output goes to /PRINT.TXT on the SD card; on CLOSE the Arduino sends it via FTP.
 * One character per Arduino command: the TI is halted while the Arduino handles it.
-*   >40 OPEN   >41 character (in CALLBF)   >42 end of record (CR/LF)   >43 CLOSE
+*   >40 OPEN (options in CALLBF)  >41 character (in CALLBF)  >42 end of record  >43 CLOSE
 *===================================================================================
 *
 EPIO	MOV	R11,R10			save return address
@@ -3323,13 +3335,32 @@ EPIO	MOV	R11,R10			save return address
 	JMP	PIOERR
 *
 PIOOPN	MOVB	R5,R5			record length specified?
-	JNE	PIOOP2			yes; keep it
+	JNE	PIOOP1			yes; keep it
 	MOV	R3,R2			no; default to 80
 	AI	R2,4			PAB+4
 	BL	@VDPWRI
 	LI	R5,>5000
 	MOVB	R5,@>8C00
-PIOOP2	LI	R0,>4000		OPEN command
+*
+PIOOP1	MOV	R3,R2			copy device options (".TX", ".CR", ".LF", ...) to CALLBF
+	AI	R2,9			PAB+9: name length
+	BL	@VDPRD
+	MOVB	@>8800,R7
+	SRL	R7,8
+	S	@>8354,R7		minus device name length = # of option characters
+	CI	R7,31			max 31 characters + >00 in CALLBF
+	JLE	PIOOP2
+	LI	R7,31
+PIOOP2	MOV	@>8356,R2		VDP: first character after device name
+	BL	@VDPRD
+	LI	R5,CALLBF
+	MOV	R7,R7			no options?
+	JEQ	PIOOP4
+PIOOP3	MOVB	@>8800,*R5+		copy option character
+	DEC	R7
+	JNE	PIOOP3
+PIOOP4	MOVB	@K002,*R5		terminate with >00
+	LI	R0,>4000		OPEN command (Arduino parses the options)
 *
 PIOCMD	MOVB	R0,@ACOMND		Arduino executes, TI halted until done
 	CB	@CALLST,@K004		AllGood (>FF) or More (>F0)?

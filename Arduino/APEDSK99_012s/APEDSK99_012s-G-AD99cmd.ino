@@ -232,7 +232,7 @@
         }
         break;
 
-        //***** PIO virtual printer (APEDSKPR DSR): output to /PRINT.TXT, sent to FTP server on CLOSE
+        //***** PIO / RS232 virtual printer (APEDSKPR DSR): output to /PRINT.TXT, sent to FTP server on CLOSE
         case 64:                                                                                          //PIO OPEN
         {
           PRTfile.close();                                                                                //just in case a previous print was never closed
@@ -240,21 +240,48 @@
           if ( !PRTfile ) {
             write_DSRAM( CALLST, DOADNotFound );                                                          //SD problem -> DSR reports I/O error 6
           }
+          PRTmode = 0;                                                                                    //parse options from device name: ".TX", ".CR", ".LF"
+          PRTst   = 0;                                                                                    //(others like ".BA=9600" are ignored)
+          for ( byte ii = 0; ii < 30; ++ii ) {
+            byte cc = read_DSRAM( CALLBF + ii );
+            if ( cc == 0 ) {
+              break;
+            }
+            if ( cc == '.' ) {
+              byte c1 = read_DSRAM( CALLBF + ii + 1 ) & 0xDF;                                             //upper case
+              byte c2 = read_DSRAM( CALLBF + ii + 2 ) & 0xDF;
+              if ( c1 == 'T' && c2 == 'X' ) {
+                PRTmode |= PRT_TX;
+              } else if ( c1 == 'C' && c2 == 'R' ) {
+                PRTmode |= PRT_CR;
+              } else if ( c1 == 'L' && c2 == 'F' ) {
+                PRTmode |= PRT_LF;
+              }
+            }
+          }
           noExec();
         }
         break;
 
         case 65:                                                                                          //PIO: one character in CALLBF
         {
-          PRTfile.write( read_DSRAM( CALLBF ) );
+          if ( PRTmode & PRT_TX ) {
+            PRTfilter( read_DSRAM( CALLBF ) );                                                            //.TX: clean text
+          } else {
+            PRTfile.write( read_DSRAM( CALLBF ) );                                                        //default: raw, as a real printer would receive it
+          }
           noExec();
         }
         break;
 
         case 66:                                                                                          //PIO: end of record
         {
-          PRTfile.write( '\r' );
-          PRTfile.write( '\n' );
+          if ( !(PRTmode & PRT_CR) ) {
+            PRTfile.write( '\r' );                                                                        //unless .CR
+          }
+          if ( !(PRTmode & PRT_LF) ) {
+            PRTfile.write( '\n' );                                                                        //unless .LF
+          }
           noExec();
         }
         break;
@@ -459,7 +486,8 @@
         {
           if ( newA99cmd ) {                                                                              //first run make sure we start with 1st message
             clrCALLbuffer();                                                                              //clear CALL buffer
-            DSKx = SD.open( "/CALLhlp.txt", FILE_READ );                                                  //first run, open help file
+            DSKx = SD.open( read_DSRAM( AVersion + 3 ) == 'p' ? "/CALLHLPP.TXT" : "/CALLhlp.txt",         //first run, open help file
+                            FILE_READ );                                                                  //(APEDSKPR DSR "v12p" has its own)
             gii = 0;
           }
 
