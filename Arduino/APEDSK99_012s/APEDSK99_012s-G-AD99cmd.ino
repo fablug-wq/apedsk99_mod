@@ -429,8 +429,7 @@
                     DSKx.getName( DOADfilename, 13 );                                                     //copy foldername ...
                     if ( !Acomp(DOADfilename, 9, "SYSTEM~1") ) {                                          //skip SD system folder
                       byte cStart = 1 + ( col * 10 );
-                      byte nPos   = writeCBuffer( cStart, cStart + 8, DOADfilename, -cStart, false, true, 0x00 );  //max 8 characters
-                      write_DSRAM( CALLBF + nPos, '/' + TIBias );                                         //end folder name with "/"
+                      writeCBuffer( cStart, cStart + 8, DOADfilename, -cStart, false, true, 0x00 );       //max 8 characters
                       col++;                                                                              //next column
                     }
                   }
