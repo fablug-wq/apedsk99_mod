@@ -165,8 +165,14 @@ void TIgo( void ) {
   digitalHigh(TI_READY);                                                                                    //disables 74HC595 shift registers and wakes up TI                                                                     
 } 
 
+//not initialised by the C runtime, so it survives a watchdog reset: tells setup() that
+//the reset came from ADSR() / ARST() and not from power-on or the reset button
+#define DSRRESETMAGIC 0xA599
+unsigned int DSRreset __attribute__((section(".noinit")));
+
 //reset Arduino properly via watchdog timer
 void APEDSK99reset ( void ) {
+  DSRreset = DSRRESETMAGIC;                                                                           //keep the DSR chosen with ADSR()
   wdt_disable();                                                                                      //disable Watchdog (just to be sure)                              
   wdt_enable(WDTO_15MS);                                                                              //enable it and set delay to 15ms
   while( true ) {}                                                                                    //self-destruct in 15ms

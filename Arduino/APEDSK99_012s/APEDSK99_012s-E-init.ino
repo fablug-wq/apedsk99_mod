@@ -18,6 +18,10 @@ void setup() {
   pinAsOutput(DS);
  
   //read DSR binary from SD and write into DSR RAM
+  if ( DSRreset != DSRRESETMAGIC ) {                                    //power-on or reset button (not ADSR / ARST)?
+    EEPROM.put( EEPROM_DSR, "APEDSK99.DSR\0" );                         //yes; always start with the standard DSR
+  }
+  DSRreset = 0;                                                         //next power-on / reset button: standard DSR again
   if ( EEPROM.read(EEPROM_DSR) == 0xFF ) {                              //invalid DSR (i.e. virgin Uno EEPROM or invalid DSR filename)?
     EEPROM.put( EEPROM_DSR, "APEDSK99.DSR\0" );                         //yes, put default in EEPROM ...
   }

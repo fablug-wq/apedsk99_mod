@@ -75,6 +75,8 @@ CALL ADSR("APEDSK99")     then FCTN-QUIT
 
 **Note:** switching DSR restarts the Arduino, so `MDSK` mappings reset to `_APEDSK1/2/3.DSK`. The network configuration (IP, FTP, NTP) is kept in EEPROM.
 
+**Default at power-on:** the DSR chosen with `ADSR` stays active only until the next power-on or press of the Arduino reset button. After that APEDSK99 always starts with the standard `APEDSK99.DSR`. (The original firmware keeps the last `ADSR` choice across power cycles.)
+
 ## How it works
 
 The DSR adds `PIO` and `RS232` to the device chain after `DSK3`; both use the same handler. It sends one command per character: the character goes to the `CALLBF` buffer (>5FC8) and a command code to `ACOMND` (>5FE8). As with the other APEDSK99 CALLs, the Arduino then halts the TI, runs the command and releases it.
