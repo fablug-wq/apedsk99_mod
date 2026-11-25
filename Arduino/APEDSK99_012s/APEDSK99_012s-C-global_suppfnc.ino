@@ -1,6 +1,7 @@
 //DSKx file pointers
 File DSKx;                                                                                            //file pointer to current open DOAD
 File SDdir;                                                                                           //file pointer for SD directory listing
+File PRTfile;                                                                                         //PIO virtual printer output file (APEDSKPR DSR)
 
 //flags for "drives" (aka DOAD files) available 
 boolean activeDSK[3]  = {false, false, false};                                                        //DSKx active flag

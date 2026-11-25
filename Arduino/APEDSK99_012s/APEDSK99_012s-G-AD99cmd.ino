@@ -232,6 +232,69 @@
         }
         break;
 
+        //***** PIO virtual printer (APEDSKPR DSR): output to /PRINT.TXT, sent to FTP server on CLOSE
+        case 64:                                                                                          //PIO OPEN
+        {
+          PRTfile.close();                                                                                //just in case a previous print was never closed
+          PRTfile = SD.open( "/PRINT.TXT", O_WRITE | O_CREAT | O_TRUNC );                                 //start a fresh print file
+          if ( !PRTfile ) {
+            write_DSRAM( CALLST, DOADNotFound );                                                          //SD problem -> DSR reports I/O error 6
+          }
+          noExec();
+        }
+        break;
+
+        case 65:                                                                                          //PIO: one character in CALLBF
+        {
+          PRTfile.write( read_DSRAM( CALLBF ) );
+          noExec();
+        }
+        break;
+
+        case 66:                                                                                          //PIO: end of record
+        {
+          PRTfile.write( '\r' );
+          PRTfile.write( '\n' );
+          noExec();
+        }
+        break;
+
+        case 67:                                                                                          //PIO CLOSE: close file and send it to FTP server
+        {
+          if ( PRTfile ) {
+            PRTfile.close();
+            EtherStart();                                                                                 //start Ethernet client
+
+            char *PRTname = DOADfullpath;                                                                 //reuse global buffer (22 bytes) for FTP filename
+            strcpy_P( PRTname, PSTR("PRINT.TXT") );                                                       //fallback name without NTP
+            if ( getNTPdt() == AllGood && TimeDateNum[4] > 2000 ) {                                       //NTP time available? -> PRINT-YYMMDD-HHMM.TXT
+              TimeDateNum[4] %= 100;                                                                      //2 digit year
+              const byte order[5] = { 4, 3, 2, 0, 1 };                                                    //YY MM DD - hh mm
+              byte pp = 5;                                                                                //after "PRINT"
+              for ( byte ii = 0; ii < 5; ++ii ) {
+                if ( ii == 0 || ii == 3 ) {
+                  PRTname[pp++] = '-';                                                                    //separators
+                }
+                byte nn = TimeDateNum[ order[ii] ];
+                PRTname[pp++] = '0' + nn / 10;
+                PRTname[pp++] = '0' + nn % 10;
+              }
+              strcpy_P( PRTname + pp, PSTR(".TXT") );                                                     //extension + terminating \0
+            }
+
+            if ( ftp.connect(ACFG.ftpserver, ACFG.ftpuser, ACFG.ftpass) ) {                               //FTP server available?
+              PRTfile = SD.open( "/PRINT.TXT", FILE_READ );
+              ftp.store( PRTname, PRTfile );                                                              //yes; send print file
+              PRTfile.close();
+            } else {
+              write_DSRAM( CALLST, FNTPConnect );                                                         //no; DSR reports I/O error 6 (file stays on SD)
+            }
+            EtherStop();                                                                                  //stop Ethernet client
+          }
+          noExec();
+        }
+        break;
+
         case 36:                                                                                          //CDIR(): change working root folder
         {           
           byte nPos = readCBuffer();                                                                      //get folder name
