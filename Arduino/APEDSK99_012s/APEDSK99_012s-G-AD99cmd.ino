@@ -413,30 +413,38 @@
               gii++;                                                                                      //make sure the above is run only once
             } 
 
-            if ( gii == 10 ) {                                                                            //has empty screen row been displayed? ...
-          
-              clrCALLbuffer();                                                                            //... yes; clear CALL buffer       
-    
-              boolean pfolder = false;                                                                    //flag == true when !file && 5 chars
-              byte nPos;
-              while ( pfolder == false ) {
+            if ( gii == 11 ) {                                                                            //last (partial) row of folders already shown?
+              CALLstatus( More );                                                                         //yes; signal end of display items
+              noExec();
+            } else if ( gii == 10 ) {                                                                     //has empty screen row been displayed? ...
+
+              clrCALLbuffer();                                                                            //... yes; clear CALL buffer
+
+              byte col = 0;                                                                               //3 folders per row: columns 1, 11, 21
+              while ( col < 3 ) {
                 DSKx = SDdir.openNextFile();                                                              //next file entry
                 if ( DSKx ) {                                                                             //valid file entry ?
                   if ( DSKx.isDirectory() ) {                                                             //is it a folder (!regular file)?
                     memset( DOADfilename, 0x00, 13 );                                                     //clear for next entry
-                    DSKx.getName( DOADfilename, 13 );                                                     //copy foldername ... 
+                    DSKx.getName( DOADfilename, 13 );                                                     //copy foldername ...
                     if ( !Acomp(DOADfilename, 9, "SYSTEM~1") ) {                                          //skip SD system folder
-                      nPos  = writeCBuffer( 1, 9, DOADfilename, -1, false, true, 0x00 );                  //... we have a valid folder
+                      byte cStart = 1 + ( col * 10 );
+                      byte nPos   = writeCBuffer( cStart, cStart + 8, DOADfilename, -cStart, false, true, 0x00 );  //max 8 characters
                       write_DSRAM( CALLBF + nPos, '/' + TIBias );                                         //end folder name with "/"
-                      pfolder = true;                                                                     //processed valid folder, escape the while loop
-                    }        
+                      col++;                                                                              //next column
+                    }
                   }
+                  DSKx.close();
                 } else {                                                                                  //last file entry processed
                   SDdir.close();                                                                          //close root folder
-                  CALLstatus( More );                                                                     //signal end of display items
-                  noExec();                                                                               //stop processing 
-                  pfolder =  true;                                                                        //escape while loop
-                }  
+                  if ( col == 0 ) {                                                                       //nothing on this row?
+                    CALLstatus( More );                                                                   //signal end of display items
+                    noExec();                                                                             //stop processing
+                  } else {
+                    gii = 11;                                                                             //show this row, stop at next call
+                  }
+                  break;
+                }
               }
             } else {
               gii++;                                                                                      //... no; let DSR display an empty row

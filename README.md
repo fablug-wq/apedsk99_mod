@@ -26,6 +26,8 @@ The DSR space was almost full, so to make room for the printer this DSR keeps on
 
 `CALL AHLP` shows a single help screen for this DSR (`CALLHLPP.TXT`). For the removed CALLs, switch back to the standard DSR.
 
+`CALL SMAP` lists the SD card folders in three columns instead of one per row. This change is in the firmware, so it applies to both DSRs.
+
 ## Installation
 
 1. Copy `SD/APEDSKPR.DSR` and `SD/CALLHLPP.TXT` to the root of the SD card, next to `APEDSK99.DSR` and `CALLhlp.txt`.
