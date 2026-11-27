@@ -1,8 +1,22 @@
-# APEDSK99 mod – virtual PIO / RS232 printer
+# APEDSK99 mod – branch `bbs-terminal`: network terminal (work in progress)
 
 A modification of [APEDSK99](https://github.com/jambuur/APEDSK99) by Jochen Buur, the Arduino-based disk controller for the TI-99/4A.
 
-It adds a second DSR, **APEDSKPR**, that emulates a printer on `PIO` and `RS232`. Whatever the TI prints goes to a file on the SD card, and when the file is closed it is sent to the FTP server already configured for APEDSK99.
+**This branch** adds to the firmware four commands that let a TI program connect to a telnet BBS (or any TCP service) through the APEDSK99 Ethernet shield. The plan is a terminal program in a cartridge ROM, working name *TI-NET TERM*. The `main` branch has the virtual printer only.
+
+| Part | Status |
+|---|---|
+| Firmware commands >70–>73 (CONNECT, SEND, RECV, CLOSE) | done, tested in the PC harness (31 checks); not yet tested on real hardware |
+| Terminal program (cartridge ROM) | designed, not written: see `docs/BBS-terminal.md` and the mockups in `docs/terminal-mockup.html` |
+| DSRs | unchanged: the commands work with both `APEDSK99.DSR` and `APEDSKPR.DSR` |
+
+The firmware is compatible with the existing DSRs, and printing, `FGET`, `FPUT` and `TIME` keep working, also during a telnet session. It adds about 390 bytes of flash (about 440 left on the Uno). Details: [Network terminal commands](#network-terminal-commands-work-in-progress) below.
+
+To try it without the hardware: `harness/run.sh` (needs g++ and Python 3).
+
+## The virtual printer (also in `main`)
+
+The branch keeps everything from `main`: a second DSR, **APEDSKPR**, that emulates a printer on `PIO` and `RS232`. Whatever the TI prints goes to a file on the SD card, and when the file is closed it is sent to the FTP server already configured for APEDSK99.
 
 ## Contents
 
