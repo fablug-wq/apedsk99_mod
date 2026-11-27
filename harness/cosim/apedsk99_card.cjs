@@ -1,5 +1,5 @@
 // APEDSK99 co-simulation, TI side: a peripheral card for ti99-headless
-// (Machine(cards=[(this file, options)])). The card is the APEDSK99 8K RAM at
+// (0.2.0 or later: Machine(cards=[(this file, options)])). The card is the APEDSK99 8K RAM at
 // >4000->5FFF, always visible (APEDSK99 does not decode the CRU). Every byte
 // the TI writes there goes to firmware_server, which runs the real sketch
 // and answers with the bytes it changed; the TI waits meanwhile, as with READY.

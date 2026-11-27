@@ -5,7 +5,7 @@ the real sketch (firmware_server), talking to the fake telnet BBS.
 
     TI99HEADLESS=/path/to/ti99-headless python3 harness/cosim/test_cosim.py -v
 
-Needs ti99-headless with external cards (Machine(cards=...)), set up
+Needs ti99-headless 0.2.0 or later (external cards: Machine(cards=...)), set up
 (python3 -m ti99headless setup), and a C++ compiler for firmware_server.
 """
 import os
