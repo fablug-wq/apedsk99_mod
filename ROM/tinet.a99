@@ -1,0 +1,1894 @@
+********************************************************************************
+* TI-NET TERM 0.1 - telnet / BBS terminal for the TI-99/4A with APEDSK99
+*
+* 8K cartridge ROM at >6000. Needs the 32K memory expansion and the APEDSK99
+* firmware with the network terminal commands (>70 CONNECT, >71 SEND,
+* >72 RECV, >73 CLOSE: see docs/BBS-terminal.md). Works with any APEDSK99 DSR.
+*
+* - text mode, 40 columns; rows 0-22 for the BBS, row 23 status line (optional)
+* - characters 32-95 from the console GROM, 96-255 from font.a99 (true lower
+*   case, CP437 accented letters, box drawing, blocks, shades)
+* - telnet: DO to WILL ECHO / SGA, WILL TTYPE ("ANSI"), WILL NAWS (40 x rows),
+*   WONT / DONT to the rest
+* - ANSI: cursor A B C D G H f d s u, erase J K, n (6n: cursor report);
+*   SGR (m) colours are read and ignored (one colour pair in text mode)
+* - address book and options in DSK1.BBSLIST (DIS/VAR 80): "#P<n>S<n>" then
+*   one "name|host[:port]" record per entry
+*
+* Build: xas99.py -R -b -o TINETC.bin tinet.a99   (see build.sh)
+********************************************************************************
+       DEF  START
+
+* --- hardware
+VDPWD  EQU  >8C00
+VDPWA  EQU  >8C02
+VDPRD  EQU  >8800
+VDPSTA EQU  >8802
+GRMWA  EQU  >9C02
+GRMRD  EQU  >9800
+KMODE  EQU  >8374
+KCODE  EQU  >8375
+GSTAT  EQU  >837C
+GPLWS  EQU  >83E0
+WS     EQU  >8300
+
+* --- APEDSK99 (fixed in the firmware)
+CALLST EQU  >5FC6
+CALLBF EQU  >5FC8
+ACOMND EQU  >5FE8
+WCOMND EQU  >5FF8
+
+* --- VDP memory
+PATTAB EQU  >0800
+PAB    EQU  >1000
+VBUF   EQU  >1080
+STROW  EQU  23*40
+
+* --- variables in the 32K (low memory)
+V      EQU  >2000
+ROW    EQU  V+0
+COL    EQU  V+2
+SROW   EQU  V+4
+SCOL   EQU  V+6
+TST    EQU  V+8
+TVERB  EQU  V+10
+EST    EQU  V+12
+NP     EQU  V+14
+PRIV   EQU  V+16
+PAR    EQU  V+18
+SBN    EQU  V+34
+SBBUF  EQU  V+36
+TXN    EQU  V+44
+TXBUF  EQU  V+46
+RXN    EQU  V+110
+RXBUF  EQU  V+112
+CURON  EQU  V+144
+CURAD  EQU  V+146
+CURCH  EQU  V+148
+ROWS   EQU  V+150
+STATL  EQU  V+152
+PAL    EQU  V+154
+FRM    EQU  V+156
+SECS   EQU  V+158
+FLEN   EQU  V+160
+FIELD  EQU  V+162
+BOOKN  EQU  V+194
+FWOK   EQU  V+196
+NAMBUF EQU  V+198
+WSSAV  EQU  V+206
+DLFND  EQU  V+238
+NLEN   EQU  V+240
+NAME   EQU  V+242
+RECLEN EQU  V+260
+BKSEL  EQU  V+>2F0
+BOOK   EQU  V+262
+ESIZE  EQU  48
+NSIZE  EQU  16
+SCRBUF EQU  V+>300
+RECBUF EQU  V+>700
+STACK  EQU  >3FF0
+
+* --- keys (KSCAN mode 5)
+K.AID  EQU  1
+K.QUIT EQU  5
+K.REDO EQU  6
+K.ERAS EQU  7
+K.LEFT EQU  8
+K.RGHT EQU  9
+K.DOWN EQU  10
+K.UP   EQU  11
+K.ENTR EQU  13
+K.BACK EQU  15
+K.DEL  EQU  3
+
+********************************************************************************
+* cartridge header
+********************************************************************************
+       AORG >6000
+       BYTE >AA,>01,>00,>00
+       DATA 0
+       DATA PROGS
+       DATA 0
+       DATA 0
+PROGS  DATA 0
+       DATA START
+       BYTE 11
+       TEXT 'TI-NET TERM'
+       EVEN
+
+********************************************************************************
+* start
+********************************************************************************
+START  LIMI 0
+       LWPI WS
+       LI   R10,STACK
+       BL   @VINIT
+       LI   R0,1
+       MOV  R0,@STATL
+       CLR  @PAL
+       BL   @LOADBK
+       BL   @SETCOL
+       BL   @FWCHK
+       MOV  @FWOK,R0
+       JEQ  BOOKSC
+       B    @FWERR
+
+********************************************************************************
+* address book screen
+********************************************************************************
+BOOKSC LI   R10,STACK
+       BL   @SETCOL
+       BL   @CLS
+       LI   R3,BKSCR
+       BL   @DRAWL
+       CLR  @FLEN
+       CLR  @FIELD
+       CLR  @BKSEL
+       BL   @BKLIST
+BKFLD  BL   @DRFLD
+BKLOOP BL   @KEY
+       MOV  R0,R0
+       JEQ  BKLOOP
+       CI   R0,K.ENTR
+       JEQ  BKCONN
+       CI   R0,K.BACK
+       JNE  BK1
+       B    @OPTSC
+BK1    CI   R0,K.REDO
+       JNE  BK2
+       B    @BKSAVE
+BK2    CI   R0,K.ERAS
+       JNE  BK3
+       B    @BKDEL
+BK3    CI   R0,K.QUIT
+       JNE  BK4
+       BLWP @>0000
+BK4    CI   R0,K.LEFT
+       JNE  BK5
+       MOV  @FLEN,R1
+       JEQ  BKLOOP
+       DEC  R1
+       MOV  R1,@FLEN
+       CLR  R2
+       MOVB R2,@FIELD(R1)
+       JMP  BKFLD
+BK5    MOV  @BOOKN,R1
+       JEQ  BK6
+       CI   R0,K.UP
+       JNE  BK5C
+       MOV  @BKSEL,R0
+       DEC  R0
+       JGT  BK5S
+       MOV  R1,R0
+       JMP  BK5S
+BK5C   CI   R0,K.DOWN
+       JNE  BK6
+       MOV  @BKSEL,R0
+       INC  R0
+       C    R0,R1
+       JLE  BK5S
+       LI   R0,1
+BK5S   MOV  R0,@BKSEL
+       BL   @BKMARK
+       MOV  @BKSEL,R0
+       DEC  R0
+       BL   @ENTRY
+       AI   R1,NSIZE
+       LI   R2,FIELD
+       CLR  R3
+BK5A   MOVB *R1+,*R2+
+       JEQ  BK5B
+       INC  R3
+       JMP  BK5A
+BK5B   MOV  R3,@FLEN
+       JMP  BKFLD
+BK6    CI   R0,32
+       JL   BKLOOP
+       CI   R0,126
+       JH   BKLOOP
+       MOV  @FLEN,R1
+       CI   R1,31
+       JHE  BKLOOP
+       SWPB R0
+       MOVB R0,@FIELD(R1)
+       INC  R1
+       MOV  R1,@FLEN
+       CLR  R2
+       MOVB R2,@FIELD(R1)
+       JMP  BKFLD
+
+* connect to FIELD
+BKCONN MOV  @FLEN,R0
+       JEQ  BKLOOP
+       BL   @MSGCLR
+       LI   R0,16*40+1
+       LI   R1,MCONN
+       BL   @PRZ
+       LI   R1,FIELD
+       BL   @PRZC
+       LI   R1,MDOTS
+       BL   @PRZC
+       BL   @CONN
+       CI   R0,>FF
+       JNE  BKC2
+       B    @TERM
+BKC2   BL   @MSGCLR
+       LI   R0,16*40+1
+       LI   R1,MNOCON
+       BL   @PRZ
+       B    @BKLOOP
+
+* save FIELD as a new entry: ask the name
+BKSAVE MOV  @FLEN,R0
+       JNE  BS1
+       B    @BKLOOP
+BS1    MOV  @BOOKN,R0
+       CI   R0,9
+       JL   BS2
+       LI   R1,MFULL
+       B    @BKMSG
+BS2    BL   @MSGCLR
+       LI   R0,16*40+1
+       LI   R1,MNAME
+       BL   @PRZ
+       BL   @LINEIN
+       MOV  R0,R0
+       JEQ  BS9
+       MOV  @BOOKN,R0
+       BL   @ENTRY
+       LI   R2,NAME
+BS3    MOVB *R2+,*R1+
+       JNE  BS3
+       MOV  @BOOKN,R0
+       BL   @ENTRY
+       AI   R1,NSIZE
+       LI   R2,FIELD
+BS4    MOVB *R2+,*R1+
+       JNE  BS4
+       INC  @BOOKN
+       BL   @SAVEBK
+       MOV  R0,R0
+       JEQ  BS8
+       DEC  @BOOKN
+       LI   R1,MDSKER
+       JMP  BKMSG
+BS8    CLR  @FLEN
+       CLR  @FIELD
+       LI   R1,MSAVED
+       JMP  BKMSG
+BS9    LI   R1,MEMPTY
+BKMSG  DECT R10
+       MOV  R1,*R10
+       BL   @MSGCLR
+       MOV  *R10+,R1
+       LI   R0,16*40+1
+       BL   @PRZ
+       BL   @BKLIST
+       B    @BKFLD
+
+* delete an entry
+BKDEL  MOV  @BOOKN,R0
+       JNE  BD1
+       B    @BKLOOP
+BD1    BL   @MSGCLR
+       LI   R0,16*40+1
+       LI   R1,MDELQ
+       BL   @PRZ
+BD2    BL   @KEY
+       MOV  R0,R0
+       JEQ  BD2
+       AI   R0,-'1'
+       JLT  BD9
+       C    R0,@BOOKN
+       JHE  BD9
+       MOV  R0,R5
+       BL   @ENTRY
+       MOV  R1,R2
+       AI   R2,ESIZE
+       MOV  @BOOKN,R3
+       S    R5,R3
+       DEC  R3
+       LI   R6,ESIZE
+       MPY  R3,R6
+       MOV  R7,R7
+       JEQ  BD4
+BD3    MOVB *R2+,*R1+
+       DEC  R7
+       JNE  BD3
+BD4    DEC  @BOOKN
+       BL   @SAVEBK
+       LI   R1,MDELD
+       MOV  R0,R0
+       JEQ  BKMSG
+       LI   R1,MDSKER
+       JMP  BKMSG
+BD9    LI   R1,MEMPTY
+       JMP  BKMSG
+
+* R0 = entry number -> R1 = its address (name; host at +NSIZE)
+ENTRY  LI   R1,ESIZE
+       MPY  R0,R1
+       MOV  R2,R1
+       AI   R1,BOOK
+       B    *R11
+
+* list the entries, rows 4-12
+BKLIST DECT R10
+       MOV  R11,*R10
+       LI   R0,4*40
+       LI   R1,>2000
+       LI   R2,9*40
+       BL   @VFILL
+       CLR  R5
+       LI   R6,4*40+1
+BL1    C    R5,@BOOKN
+       JHE  BL9
+       MOV  R5,R1
+       AI   R1,'1'
+       SWPB R1
+       MOV  R6,R0
+       BL   @VSBW
+       MOV  R5,R0
+       BL   @ENTRY
+       MOV  R1,R7
+       MOV  R6,R0
+       AI   R0,2
+       LI   R2,14
+       BL   @PRN
+       MOV  R7,R1
+       AI   R1,NSIZE
+       MOV  R6,R0
+       AI   R0,17
+       LI   R2,22
+       BL   @PRN
+       INC  R5
+       AI   R6,40
+       JMP  BL1
+BL9    MOV  *R10+,R11
+       B    *R11
+
+* the mark > in front of the chosen entry (BKSEL, 1-9; 0 none)
+BKMARK DECT R10
+       MOV  R11,*R10
+       CLR  R5
+       LI   R0,4*40
+BM1    LI   R1,>2000
+       INC  R5
+       C    R5,@BKSEL
+       JNE  BM2
+       LI   R1,>3E00
+BM2    BL   @VSBW
+       AI   R0,40
+       CI   R5,9
+       JL   BM1
+       MOV  *R10+,R11
+       B    *R11
+
+* the input field, row 14
+DRFLD  DECT R10
+       MOV  R11,*R10
+       LI   R0,14*40+1
+       LI   R1,>3E00
+       BL   @VSBW
+       LI   R0,14*40+2
+       LI   R1,FIELD
+       BL   @PRZ
+       LI   R1,>DB00
+       MOVB R1,@VDPWD
+       LI   R1,>2000
+       LI   R2,31
+       S    @FLEN,R2
+DF1    MOVB R1,@VDPWD
+       DEC  R2
+       JGT  DF1
+       MOV  *R10+,R11
+       B    *R11
+
+MSGCLR DECT R10
+       MOV  R11,*R10
+       LI   R0,16*40
+       LI   R1,>2000
+       LI   R2,40
+       BL   @VFILL
+       MOV  *R10+,R11
+       B    *R11
+
+* read a name (max 14) after the prompt on row 16 -> NAME, R0 = length (0: none)
+LINEIN DECT R10
+       MOV  R11,*R10
+       CLR  R5
+LI1    LI   R0,16*40+7
+       A    R5,R0
+       LI   R1,>DB00
+       BL   @VSBW
+       LI   R1,>2000
+       MOVB R1,@VDPWD
+LI2    BL   @KEY
+       MOV  R0,R0
+       JEQ  LI2
+       CI   R0,K.ENTR
+       JEQ  LI9
+       CI   R0,K.BACK
+       JNE  LI3
+       CLR  R5
+       JMP  LI9
+LI3    CI   R0,K.LEFT
+       JNE  LI4
+       MOV  R5,R5
+       JEQ  LI2
+       DEC  R5
+       JMP  LI1
+LI4    CI   R0,'|'
+       JEQ  LI2
+       CI   R0,32
+       JL   LI2
+       CI   R0,126
+       JH   LI2
+       CI   R5,14
+       JHE  LI2
+       SWPB R0
+       MOVB R0,@NAME(R5)
+       LI   R1,16*40+7
+       A    R5,R1
+       MOV  R0,R2
+       MOV  R1,R0
+       MOV  R2,R1
+       BL   @VSBW
+       INC  R5
+       JMP  LI1
+LI9    CLR  R0
+       MOVB R0,@NAME(R5)
+       MOV  R5,R0
+       MOV  *R10+,R11
+       B    *R11
+
+********************************************************************************
+* options screen
+********************************************************************************
+OPTSC  LI   R10,STACK
+       BL   @CLS
+       LI   R3,OPSCR
+       BL   @DRAWL
+OP1    LI   R0,3*40+24
+       MOV  @PAL,R1
+       SLA  R1,1
+       MOV  @PALNAM(R1),R1
+       BL   @PRZ
+       LI   R0,4*40+24
+       LI   R1,MNO
+       MOV  @STATL,R2
+       JEQ  OP2
+       LI   R1,MYES
+OP2    BL   @PRZ
+OP3    BL   @KEY
+       MOV  R0,R0
+       JEQ  OP3
+       CI   R0,'1'
+       JNE  OP4
+       MOV  @PAL,R1
+       INC  R1
+       CI   R1,3
+       JL   OP3A
+       CLR  R1
+OP3A   MOV  R1,@PAL
+       BL   @SETCOL
+       JMP  OP1
+OP4    CI   R0,'2'
+       JNE  OP5
+       LI   R1,1
+       XOR  @STATL,R1
+       MOV  R1,@STATL
+       JMP  OP1
+OP5    CI   R0,K.BACK
+       JNE  OP3
+       BL   @SAVEBK
+       B    @BOOKSC
+
+********************************************************************************
+* firmware without the terminal commands, or no APEDSK99
+********************************************************************************
+FWERR  BL   @CLS
+       LI   R3,FWSCR
+       BL   @DRAWL
+       LI   R0,5*40+1
+       LI   R1,MFWOLD
+       MOV  @FWOK,R2
+       DEC  R2
+       JEQ  FE1
+       LI   R1,MNOAPE
+FE1    BL   @PRZ
+FE2    BL   @KEY
+       MOV  R0,R0
+       JEQ  FE2
+       BLWP @>0000
+
+********************************************************************************
+* terminal
+********************************************************************************
+TERM   LI   R10,STACK
+       CLR  @ROW
+       CLR  @COL
+       CLR  @SROW
+       CLR  @SCOL
+       CLR  @TST
+       CLR  @EST
+       CLR  @TXN
+       CLR  @CURON
+       CLR  @FRM
+       CLR  @SECS
+       LI   R0,24
+       S    @STATL,R0
+       MOV  R0,@ROWS
+       BL   @CLS
+       BL   @STATUS
+
+TLOOP  BL   @KEY
+       MOV  R0,R0
+       JEQ  TL2
+       BL   @TKEY
+       MOV  R0,R0
+       JEQ  TL2
+       B    @THANG
+TL2    BL   @TXFLSH
+       LI   R0,>7200
+       BL   @NETCMD
+       MOVB @CALLBF,R0
+       SRL  R0,8
+       JNE  TL3
+       BL   @CURSHW
+       BL   @CLOCK
+       JMP  TLOOP
+TL3    CI   R0,>FF
+       JNE  TL3A
+       B    @TCLOSD
+TL3A   CI   R0,31
+       JLE  TL3B
+       B    @TBAD
+TL3B   MOV  R0,@RXN
+       MOV  R0,R2
+       LI   R1,CALLBF+1
+       LI   R3,RXBUF
+TL4    MOVB *R1+,*R3+
+       DEC  R2
+       JNE  TL4
+       BL   @CUROFF
+       LI   R4,RXBUF
+       MOV  @RXN,R5
+TL5    CLR  R1
+       MOVB *R4+,R1
+       SWPB R1
+       DECT R10
+       MOV  R4,*R10
+       DECT R10
+       MOV  R5,*R10
+       BL   @TNBYTE
+       MOV  *R10+,R5
+       MOV  *R10+,R4
+       DEC  R5
+       JNE  TL5
+       JMP  TLOOP
+
+* the BBS hung up / a bad answer / we hang up
+TCLOSD LI   R1,MCLOSD
+       JMP  TEND
+TBAD   LI   R1,MBAD
+TEND   DECT R10
+       MOV  R1,*R10
+       BL   @CUROFF
+       LI   R0,STROW
+       LI   R1,>2000
+       LI   R2,40
+       BL   @VFILL
+       MOV  *R10+,R1
+       LI   R0,STROW
+       BL   @PRZ
+TE1    BL   @KEY
+       MOV  R0,R0
+       JEQ  TE1
+THANG  LI   R0,>7300
+       BL   @NETCMD
+       B    @BOOKSC
+
+* a key in the terminal -> what it sends; R0 = 1: hang up
+TKEY   DECT R10
+       MOV  R11,*R10
+       MOV  R0,R1
+       CI   R1,K.BACK
+       JNE  TK1
+       BL   @TMENU
+       JMP  TK9
+TK1    CI   R1,K.ENTR
+       JEQ  TKSEND
+       CI   R1,K.LEFT
+       JEQ  TKSEND
+       CI   R1,K.AID
+       JNE  TK2
+       LI   R1,27
+       JMP  TKSEND
+TK2    CI   R1,K.DEL
+       JNE  TK3
+       LI   R1,127
+       JMP  TKSEND
+TK3    CI   R1,K.UP
+       JNE  TK4
+       LI   R2,'A'
+       JMP  TKCSI
+TK4    CI   R1,K.DOWN
+       JNE  TK5
+       LI   R2,'B'
+       JMP  TKCSI
+TK5    CI   R1,K.RGHT
+       JNE  TK6
+       LI   R2,'C'
+       JMP  TKCSI
+TK6    CI   R1,129
+       JL   TK7
+       CI   R1,154
+       JH   TK7
+       AI   R1,-128
+       JMP  TKSEND
+TK7    CI   R1,32
+       JL   TK8
+       CI   R1,126
+       JLE  TKSEND
+TK8    CLR  R0
+       JMP  TK9
+TKCSI  DECT R10
+       MOV  R2,*R10
+       LI   R1,27
+       BL   @TXPUT
+       LI   R1,'['
+       BL   @TXPUT
+       MOV  *R10+,R1
+TKSEND BL   @TXPUT
+       CLR  R0
+TK9    MOV  *R10+,R11
+       B    *R11
+
+* FCTN-9 during a session: the menu on the status row
+TMENU  DECT R10
+       MOV  R11,*R10
+       BL   @CUROFF
+       LI   R0,STROW
+       LI   R1,>2000
+       LI   R2,40
+       BL   @VFILL
+       LI   R0,STROW
+       LI   R1,MMENU
+       BL   @PRZ
+TM1    BL   @KEY
+       MOV  R0,R0
+       JEQ  TM1
+       ANDI R0,>DF
+       CI   R0,'R'
+       JNE  TM2
+       LI   R0,1
+       JMP  TM9
+TM2    BL   @STATUS
+       CLR  R0
+TM9    MOV  *R10+,R11
+       B    *R11
+
+* the status row: host, ANSI 40xROWS, time, FCTN-9
+STATUS MOV  @STATL,R0
+       JNE  ST1
+       B    *R11
+ST1    DECT R10
+       MOV  R11,*R10
+       LI   R0,STROW
+       LI   R1,>2000
+       LI   R2,40
+       BL   @VFILL
+       LI   R0,STROW
+       LI   R1,>DE00
+       BL   @VSBW
+       LI   R0,STROW+1
+       LI   R1,FIELD
+       LI   R2,14
+       BL   @PRN
+       LI   R0,STROW+16
+       LI   R1,MANSI
+       BL   @PRZ
+       LI   R0,STROW+33
+       LI   R1,MF9
+       BL   @PRZ
+       BL   @STTIME
+       MOV  *R10+,R11
+       B    *R11
+
+STTIME MOV  @STATL,R0
+       JNE  SM1
+       B    *R11
+SM1    DECT R10
+       MOV  R11,*R10
+       MOV  @SECS,R7
+       CLR  R6
+       LI   R2,60
+       DIV  R2,R6
+       LI   R0,STROW+27
+       MOV  R6,R1
+       BL   @PR2D
+       LI   R1,>3A00
+       MOVB R1,@VDPWD
+       MOV  R7,R1
+       LI   R0,STROW+30
+       BL   @PR2D
+       MOV  *R10+,R11
+       B    *R11
+
+* R0 = VDP address, R1 = 0-99: two digits
+PR2D   DECT R10
+       MOV  R11,*R10
+       MOV  R1,R5
+       CLR  R4
+       LI   R2,10
+       DIV  R2,R4
+       CI   R4,9
+       JLE  P2A
+       LI   R4,9
+P2A    AI   R4,'0'
+       SWPB R4
+       MOV  R4,R1
+       BL   @VSBW
+       AI   R5,'0'
+       SWPB R5
+       MOVB R5,@VDPWD
+       MOV  *R10+,R11
+       B    *R11
+
+* frames from the VDP status flag -> seconds on the status row
+CLOCK  MOVB @VDPSTA,R0
+       JLT  CK1
+       B    *R11
+CK1    INC  @FRM
+       MOV  @FRM,R0
+       CI   R0,60
+       JHE  CK2
+       B    *R11
+CK2    CLR  @FRM
+       INC  @SECS
+       B    @STTIME
+
+********************************************************************************
+* telnet
+********************************************************************************
+* R1 = received byte
+TNBYTE MOV  @TST,R2
+       SLA  R2,1
+       MOV  @TNJMP(R2),R2
+       B    *R2
+TNJMP  DATA TN0,TN1,TN2,TN3,TN4
+
+TN0    CI   R1,>FF
+       JEQ  TN0A
+       B    @ANSI
+TN0A   INC  @TST
+       B    *R11
+TN1    CI   R1,>FF
+       JNE  TN1A
+       CLR  @TST
+       B    @ANSI
+TN1A   CI   R1,>FB
+       JL   TN1B
+       MOV  R1,@TVERB
+       LI   R0,2
+       MOV  R0,@TST
+       B    *R11
+TN1B   CI   R1,>FA
+       JNE  TN1C
+       LI   R0,3
+       MOV  R0,@TST
+       CLR  @SBN
+       B    *R11
+TN1C   CLR  @TST
+       B    *R11
+
+* an option: R1 = option, TVERB = WILL / WONT / DO / DONT
+TN2    CLR  @TST
+       DECT R10
+       MOV  R11,*R10
+       MOV  R1,R5
+       MOV  @TVERB,R0
+       CI   R0,>FB
+       JNE  TN2D
+       LI   R6,>FE
+       CI   R5,1
+       JEQ  TN2A
+       CI   R5,3
+       JNE  TN2R
+TN2A   LI   R6,>FD
+       JMP  TN2R
+TN2D   CI   R0,>FD
+       JNE  TN2X
+       LI   R6,>FC
+       CI   R5,24
+       JEQ  TN2W
+       CI   R5,31
+       JNE  TN2R
+       LI   R6,>FB
+       BL   @TNREP
+       LI   R3,NAWS
+       BL   @TXSTR
+       MOV  @ROWS,R1
+       BL   @TXPUT
+       LI   R1,>FF
+       BL   @TXPUT
+       LI   R1,>F0
+       BL   @TXPUT
+       JMP  TN2X
+TN2W   LI   R6,>FB
+TN2R   BL   @TNREP
+TN2X   MOV  *R10+,R11
+       B    *R11
+
+* send IAC R6 R5
+TNREP  DECT R10
+       MOV  R11,*R10
+       LI   R1,>FF
+       BL   @TXPUT
+       MOV  R6,R1
+       BL   @TXPUT
+       MOV  R5,R1
+       BL   @TXPUT
+       MOV  *R10+,R11
+       B    *R11
+
+* in a subnegotiation
+TN3    CI   R1,>FF
+       JNE  TN3A
+       LI   R0,4
+       MOV  R0,@TST
+       B    *R11
+TN3A   MOV  @SBN,R2
+       CI   R2,8
+       JHE  TN3B
+       SWPB R1
+       MOVB R1,@SBBUF(R2)
+       INC  @SBN
+TN3B   B    *R11
+TN4    CI   R1,>F0
+       JEQ  TN4A
+       LI   R0,3
+       MOV  R0,@TST
+       LI   R1,>FF
+       JMP  TN3A
+TN4A   CLR  @TST
+       CB   @SBBUF,@B24
+       JNE  TN4X
+       CB   @SBBUF+1,@B1
+       JNE  TN4X
+       LI   R3,TTYPE
+       B    @TXSTR
+TN4X   B    *R11
+
+********************************************************************************
+* ANSI / screen; R1 = byte
+********************************************************************************
+ANSI   MOV  @EST,R0
+       JEQ  AN0
+       DEC  R0
+       JEQ  AN1
+       B    @AN2
+AN0    CI   R1,27
+       JEQ  AN0A
+       B    @CTRL
+AN0A   INC  @EST
+       B    *R11
+AN1    CLR  @EST
+       CI   R1,'['
+       JNE  AN1A
+       LI   R0,2
+       MOV  R0,@EST
+       CLR  @NP
+       CLR  @PRIV
+       LI   R0,PAR
+       LI   R2,8
+AN1Z   CLR  *R0+
+       DEC  R2
+       JNE  AN1Z
+       B    *R11
+AN1A   CI   R1,'c'
+       JNE  AN1B
+       B    @CLRALL
+AN1B   CI   R1,'7'
+       JNE  AN1C
+       B    @SAVEC
+AN1C   CI   R1,'8'
+       JNE  AN1D
+       B    @RESTC
+AN1D   B    *R11
+
+* CSI: parameters, then the final byte
+AN2    CI   R1,'0'
+       JL   AN2A
+       CI   R1,'9'
+       JH   AN2A
+       MOV  @NP,R2
+       SLA  R2,1
+       MOV  @PAR(R2),R3
+       CI   R3,999
+       JH   AN2Z
+       LI   R4,10
+       MPY  R4,R3
+       AI   R1,-'0'
+       A    R1,R4
+       MOV  R4,@PAR(R2)
+AN2Z   B    *R11
+AN2A   CI   R1,';'
+       JNE  AN2B
+       MOV  @NP,R2
+       CI   R2,7
+       JHE  AN2Z
+       INC  @NP
+       B    *R11
+AN2B   CI   R1,'?'
+       JL   AN2C
+       CI   R1,'?'
+       JH   AN2C
+       SETO @PRIV
+       B    *R11
+AN2C   CI   R1,'<'
+       JL   AN2D
+       CI   R1,'>'
+       JH   AN2D
+       SETO @PRIV
+       B    *R11
+AN2D   CI   R1,>40
+       JL   AN2Z
+       CI   R1,>7E
+       JH   AN2Z
+       CLR  @EST
+       MOV  @PRIV,R0
+       JNE  AN2Z
+       MOV  @PAR,R2
+       MOV  R2,R3
+       JNE  AN2E
+       INC  R3
+AN2E   LI   R0,CSITAB
+AN2F   MOV  *R0+,R4
+       JEQ  AN2Z
+       MOV  *R0+,R5
+       C    R4,R1
+       JNE  AN2F
+       B    *R5
+* R1 final, R2 first parameter, R3 same (at least 1)
+CSITAB DATA 'A',CUU,'B',CUD,'C',CUF,'D',CUB,'H',CUP,'f',CUP
+       DATA 'G',CHA,'d',VPA,'J',ED,'K',EL,'s',SAVEC,'u',RESTC
+       DATA 'n',DSR6,0
+
+CUU    S    R3,@ROW
+       JMP  CLAMP
+CUD    A    R3,@ROW
+       JMP  CLAMP
+CUF    A    R3,@COL
+       JMP  CLAMP
+CUB    MOV  @COL,R0
+       CI   R0,40
+       JL   CUB1
+       LI   R0,39
+CUB1   S    R3,R0
+       MOV  R0,@COL
+       JMP  CLAMP
+CUP    DEC  R3
+       MOV  R3,@ROW
+       MOV  @PAR+2,R3
+       JNE  CUP1
+       INC  R3
+CUP1   DEC  R3
+       MOV  R3,@COL
+       JMP  CLAMP
+CHA    DEC  R3
+       MOV  R3,@COL
+       JMP  CLAMP
+VPA    DEC  R3
+       MOV  R3,@ROW
+* keep the cursor on the screen
+CLAMP  MOV  @ROW,R0
+       JGT  CL1
+       CLR  @ROW
+CL1    MOV  @ROWS,R1
+       DEC  R1
+       C    @ROW,R1
+       JLE  CL2
+       MOV  R1,@ROW
+CL2    MOV  @COL,R0
+       JGT  CL3
+       CLR  @COL
+CL3    LI   R1,39
+       C    @COL,R1
+       JLE  CL4
+       MOV  R1,@COL
+CL4    B    *R11
+
+SAVEC  MOV  @ROW,@SROW
+       MOV  @COL,@SCOL
+       B    *R11
+RESTC  MOV  @SROW,@ROW
+       MOV  @SCOL,@COL
+       B    *R11
+
+* ESC [ 6 n: report the cursor, ESC [ row ; col R
+DSR6   CI   R2,6
+       JEQ  DS1
+       B    *R11
+DS1    DECT R10
+       MOV  R11,*R10
+       LI   R1,27
+       BL   @TXPUT
+       LI   R1,'['
+       BL   @TXPUT
+       MOV  @ROW,R1
+       INC  R1
+       BL   @TXDEC
+       LI   R1,';'
+       BL   @TXPUT
+       MOV  @COL,R1
+       CI   R1,40
+       JL   DS2
+       LI   R1,39
+DS2    INC  R1
+       BL   @TXDEC
+       LI   R1,'R'
+       BL   @TXPUT
+       MOV  *R10+,R11
+       B    *R11
+
+* erase in display: 0 to the end, 1 from the start, 2 all
+ED     DECT R10
+       MOV  R11,*R10
+       BL   @POSAD
+       MOV  R0,R6
+       MOV  @PAR,R2
+       JNE  ED1
+       MOV  @ROWS,R3
+       LI   R2,40
+       MPY  R3,R2
+       MOV  R3,R2
+       S    R6,R2
+       MOV  R6,R0
+       JMP  ED9
+ED1    DEC  R2
+       JNE  ED2
+       MOV  R6,R2
+       INC  R2
+       CLR  R0
+       JMP  ED9
+ED2    CLR  @ROW
+       CLR  @COL
+       MOV  @ROWS,R3
+       LI   R2,40
+       MPY  R3,R2
+       MOV  R3,R2
+       CLR  R0
+ED9    BL   @BLANK
+       MOV  *R10+,R11
+       B    *R11
+
+* erase in line: 0 to the end, 1 from the start, 2 the line
+EL     DECT R10
+       MOV  R11,*R10
+       MOV  @ROW,R0
+       LI   R3,40
+       MPY  R0,R3
+       MOV  R4,R0
+       MOV  @COL,R5
+       CI   R5,40
+       JL   EL0
+       LI   R5,40
+EL0    MOV  @PAR,R2
+       JNE  EL1
+       A    R5,R0
+       LI   R2,40
+       S    R5,R2
+       JMP  EL9
+EL1    DEC  R2
+       JNE  EL2
+       MOV  R5,R2
+       INC  R2
+       CI   R2,40
+       JLE  EL9
+       LI   R2,40
+       JMP  EL9
+EL2    LI   R2,40
+EL9    BL   @BLANK
+       MOV  *R10+,R11
+       B    *R11
+
+* R0 = VDP address, R2 = count (0: nothing): spaces
+BLANK  MOV  R2,R2
+       JGT  BK9
+       B    *R11
+BK9    LI   R1,>2000
+       B    @VFILL
+
+* control characters and printable bytes
+CTRL   CI   R1,13
+       JNE  CT1
+       CLR  @COL
+       B    *R11
+CT1    CI   R1,10
+       JNE  CT2
+       B    @LF
+CT2    CI   R1,8
+       JNE  CT3
+       MOV  @COL,R0
+       JEQ  CT2A
+       CI   R0,40
+       JL   CT2B
+       LI   R0,40
+CT2B   DEC  R0
+       MOV  R0,@COL
+CT2A   B    *R11
+CT3    CI   R1,9
+       JNE  CT4
+       MOV  @COL,R0
+       AI   R0,8
+       ANDI R0,>FFF8
+       CI   R0,39
+       JLE  CT3A
+       LI   R0,39
+CT3A   MOV  R0,@COL
+       B    *R11
+CT4    CI   R1,12
+       JNE  CT5
+       B    @CLRALL
+CT5    CI   R1,32
+       JL   CT9
+       CI   R1,127
+       JEQ  CT9
+* printable: with the wrap deferred to the next character (as a VT100)
+       DECT R10
+       MOV  R11,*R10
+       MOV  @COL,R0
+       CI   R0,40
+       JL   CT6
+       CLR  @COL
+       BL   @LF
+CT6    BL   @POSAD
+       SWPB R1
+       BL   @VSBW
+       INC  @COL
+       MOV  *R10+,R11
+CT9    B    *R11
+
+* line feed, scrolling at the bottom
+LF     MOV  @ROW,R0
+       INC  R0
+       C    R0,@ROWS
+       JHE  SCROLL
+       MOV  R0,@ROW
+       B    *R11
+SCROLL DECT R10
+       MOV  R11,*R10
+       MOV  @ROWS,R5
+       DEC  R5
+       LI   R4,40
+       MPY  R4,R5
+       MOV  R6,R5
+       LI   R0,40
+       LI   R1,SCRBUF
+       MOV  R5,R2
+       BL   @VMBR
+       CLR  R0
+       LI   R1,SCRBUF
+       MOV  R5,R2
+       BL   @VMBW
+       MOV  R5,R0
+       LI   R1,>2000
+       LI   R2,40
+       BL   @VFILL
+       MOV  *R10+,R11
+       B    *R11
+
+* clear the BBS rows and home the cursor
+CLRALL CLR  @ROW
+       CLR  @COL
+       MOV  @ROWS,R3
+       LI   R2,40
+       MPY  R3,R2
+       MOV  R3,R2
+       CLR  R0
+       LI   R1,>2000
+       B    @VFILL
+
+* R0 = VDP address of the cursor (ROW, COL); keeps R1
+POSAD  MOV  @ROW,R3
+       LI   R0,40
+       MPY  R0,R3
+       MOV  R4,R0
+       A    @COL,R0
+       B    *R11
+
+* the cursor: a block, drawn while idle
+CURSHW MOV  @CURON,R0
+       JNE  CU9
+       MOV  @COL,R0
+       CI   R0,40
+       JHE  CU9
+       DECT R10
+       MOV  R11,*R10
+       BL   @POSAD
+       MOV  R0,@CURAD
+       BL   @VRA
+       MOVB @VDPRD,@CURCH
+       MOV  @CURAD,R0
+       LI   R1,>DB00
+       BL   @VSBW
+       SETO @CURON
+       MOV  *R10+,R11
+CU9    B    *R11
+CUROFF MOV  @CURON,R0
+       JEQ  CU9
+       CLR  @CURON
+       MOV  @CURAD,R0
+       MOVB @CURCH,R1
+       B    @VSBW
+
+********************************************************************************
+* APEDSK99 network commands
+********************************************************************************
+* R0 = command in the high byte -> R0 = CALLST
+NETCMD MOVB R0,@ACOMND
+       MOVB @CALLST,R0
+       SRL  R0,8
+       B    *R11
+
+* CONNECT to FIELD -> R0 = CALLST
+CONN   LI   R1,FIELD
+       LI   R2,CALLBF
+CN1    MOVB *R1+,*R2+
+       JNE  CN1
+       LI   R0,>7000
+       B    @NETCMD
+
+* firmware check: CLOSE, then RECV with the >FE sentinel in CALLBF[0]
+FWCHK  LI   R0,>D000
+       MOVB R0,@WCOMND
+       LI   R0,>7300
+       MOVB R0,@ACOMND
+       LI   R0,>FE00
+       MOVB R0,@CALLBF
+       LI   R0,>7200
+       MOVB R0,@ACOMND
+       MOVB @CALLBF,R0
+       SRL  R0,8
+       CLR  R1
+       CI   R0,>FF
+       JEQ  FW1
+       INC  R1
+       CI   R0,>FE
+       JEQ  FW1
+       INC  R1
+FW1    MOV  R1,@FWOK
+       B    *R11
+
+* the bytes waiting in TXBUF -> SEND, 31 at a time
+TXFLSH MOV  @TXN,R2
+       JNE  TF0
+       B    *R11
+TF0    DECT R10
+       MOV  R11,*R10
+       LI   R1,TXBUF
+TF1    MOV  R2,R3
+       CI   R3,31
+       JLE  TF2
+       LI   R3,31
+TF2    S    R3,R2
+       MOV  R3,R4
+       SWPB R4
+       MOVB R4,@CALLBF
+       LI   R5,CALLBF+1
+TF3    MOVB *R1+,*R5+
+       DEC  R3
+       JNE  TF3
+       LI   R0,>7100
+       BL   @NETCMD
+       MOV  R2,R2
+       JNE  TF1
+       CLR  @TXN
+       MOV  *R10+,R11
+       B    *R11
+
+* R1 = byte -> TXBUF (keeps R1)
+TXPUT  MOV  @TXN,R2
+       CI   R2,64
+       JHE  TP9
+       SWPB R1
+       MOVB R1,@TXBUF(R2)
+       SWPB R1
+       INC  @TXN
+TP9    B    *R11
+
+* R3 = string (length byte first) -> TXBUF
+TXSTR  DECT R10
+       MOV  R11,*R10
+       MOVB *R3+,R5
+       SRL  R5,8
+TS1    CLR  R1
+       MOVB *R3+,R1
+       SWPB R1
+       BL   @TXPUT
+       DEC  R5
+       JNE  TS1
+       MOV  *R10+,R11
+       B    *R11
+
+* R1 = 0-999 in decimal -> TXBUF
+TXDEC  DECT R10
+       MOV  R11,*R10
+       MOV  R1,R7
+       CLR  R6
+       LI   R2,10
+       DIV  R2,R6
+       MOV  R6,R6
+       JEQ  TD1
+       MOV  R6,R1
+       AI   R1,'0'
+       BL   @TXPUT
+TD1    MOV  R7,R1
+       AI   R1,'0'
+       BL   @TXPUT
+       MOV  *R10+,R11
+       B    *R11
+
+********************************************************************************
+* keyboard: R0 = the key (KSCAN mode 5), 0 if none
+********************************************************************************
+KEY    LI   R0,>0500
+       MOVB R0,@KMODE
+       LWPI GPLWS
+       BL   @>000E
+       LWPI WS
+       CLR  R0
+       MOVB @GSTAT,R1
+       ANDI R1,>2000
+       JEQ  KY9
+       MOVB @KCODE,R0
+       SRL  R0,8
+KY9    B    *R11
+
+********************************************************************************
+* screen helpers
+********************************************************************************
+VWA    ORI  R0,>4000
+VRA    SWPB R0
+       MOVB R0,@VDPWA
+       SWPB R0
+       MOVB R0,@VDPWA
+       ANDI R0,>3FFF
+       B    *R11
+VWTR   SWPB R0
+       MOVB R0,@VDPWA
+       SWPB R0
+       ORI  R0,>8000
+       MOVB R0,@VDPWA
+       B    *R11
+* R0 address, R1 byte (high)
+VSBW   MOV  R11,R8
+       BL   @VWA
+       MOVB R1,@VDPWD
+       B    *R8
+* R0 address, R1 CPU address, R2 count
+VMBW   MOV  R11,R8
+       BL   @VWA
+VW1    MOVB *R1+,@VDPWD
+       DEC  R2
+       JNE  VW1
+       B    *R8
+VMBR   MOV  R11,R8
+       BL   @VRA
+VR1    MOVB @VDPRD,*R1+
+       DEC  R2
+       JNE  VR1
+       B    *R8
+* R0 address, R1 byte (high), R2 count
+VFILL  MOV  R11,R8
+       BL   @VWA
+VF1    MOVB R1,@VDPWD
+       DEC  R2
+       JNE  VF1
+       B    *R8
+* R0 address, R1 string ending with 0 -> R1 after the 0
+PRZ    MOV  R11,R8
+       BL   @VWA
+       JMP  PZ1
+PRZC   MOV  R11,R8
+PZ1    MOVB *R1+,R2
+       JEQ  PZ9
+       MOVB R2,@VDPWD
+       JMP  PZ1
+PZ9    B    *R8
+* R0 address, R1 string ending with 0, at most R2 characters
+PRN    MOV  R11,R8
+       BL   @VWA
+PN1    MOVB *R1+,R3
+       JEQ  PN9
+       MOVB R3,@VDPWD
+       DEC  R2
+       JNE  PN1
+PN9    B    *R8
+* R3 = list of (VDP address, string), >FFFF at the end
+DRAWL  DECT R10
+       MOV  R11,*R10
+DW1    MOV  *R3+,R0
+       CI   R0,>FFFF
+       JEQ  DW9
+       MOV  *R3+,R1
+       BL   @PRZ
+       JMP  DW1
+DW9    MOV  *R10+,R11
+       B    *R11
+CLS    CLR  R0
+       LI   R1,>2000
+       LI   R2,960
+       B    @VFILL
+
+* text mode, the font
+VINIT  DECT R10
+       MOV  R11,*R10
+       LI   R0,>0000
+       BL   @VWTR
+       LI   R0,>01F0
+       BL   @VWTR
+       LI   R0,>F000
+       MOVB R0,@>83D4                * KSCAN restores VDP R1 from here
+       LI   R0,>0200
+       BL   @VWTR
+       LI   R0,>0401
+       BL   @VWTR
+       BL   @CLS
+       LI   R0,PATTAB
+       CLR  R1
+       LI   R2,256
+       BL   @VFILL
+       LI   R0,PATTAB+256
+       BL   @VWA
+       LI   R1,>06B4
+       MOVB R1,@GRMWA
+       SWPB R1
+       MOVB R1,@GRMWA
+       LI   R2,64
+VI1    CLR  R1
+       MOVB R1,@VDPWD
+       LI   R3,7
+VI2    MOVB @GRMRD,@VDPWD
+       DEC  R3
+       JNE  VI2
+       DEC  R2
+       JNE  VI1
+       LI   R0,PATTAB+768
+       LI   R1,FONT
+       LI   R2,1280
+       BL   @VMBW
+       MOV  *R10+,R11
+       B    *R11
+
+SETCOL MOV  @PAL,R1
+       MOVB @PALTAB(R1),R0
+       SRL  R0,8
+       AI   R0,>0700
+       B    @VWTR
+PALTAB BYTE >F4,>31,>17
+       EVEN
+
+********************************************************************************
+* DSK1.BBSLIST: address book and options
+********************************************************************************
+* PAB to VDP with opcode and flags from R1 (high: opcode, low: flags)
+PABSET DECT R10
+       MOV  R11,*R10
+       DECT R10
+       MOV  R1,*R10
+       LI   R0,PAB
+       LI   R1,PABT
+       LI   R2,PABTE-PABT
+       BL   @VMBW
+       MOV  *R10+,R1
+       LI   R0,PAB
+       BL   @VSBW
+       LI   R0,PAB+1
+       SWPB R1
+       BL   @VSBW
+       MOV  *R10+,R11
+       B    *R11
+* R1 high = opcode
+PABOP  DECT R10
+       MOV  R11,*R10
+       LI   R0,PAB
+       BL   @VSBW
+       BL   @DSRLNK
+       MOV  *R10+,R11
+       B    *R11
+
+LOADBK DECT R10
+       MOV  R11,*R10
+       CLR  @BOOKN
+       LI   R1,>0014
+       BL   @PABSET
+       BL   @DSRLNK
+       MOV  R0,R0
+       JNE  LB9
+LB1    LI   R1,>0200
+       BL   @PABOP
+       MOV  R0,R0
+       JNE  LB8
+       LI   R0,PAB+5
+       BL   @VRA
+       MOVB @VDPRD,R2
+       SRL  R2,8
+       MOV  R2,@RECLEN
+       JEQ  LB1
+       LI   R0,VBUF
+       LI   R1,RECBUF
+       BL   @VMBR
+       BL   @PARSE
+       JMP  LB1
+LB8    LI   R1,>0100
+       BL   @PABOP
+LB9    MOV  *R10+,R11
+       B    *R11
+
+* one record in RECBUF (RECLEN): options or an entry
+PARSE  LI   R1,RECBUF
+       MOV  @RECLEN,R2
+       CB   *R1,@HASH
+       JNE  PA5
+PA1    DEC  R2
+       JEQ  PA9
+       INC  R1
+       CB   *R1,@LETP
+       JNE  PA2
+       MOVB @1(R1),R0
+       SRL  R0,8
+       AI   R0,-'0'
+       CI   R0,2
+       JH   PA1
+       MOV  R0,@PAL
+       JMP  PA1
+PA2    CB   *R1,@LETS
+       JNE  PA1
+       MOVB @1(R1),R0
+       SRL  R0,8
+       AI   R0,-'0'
+       CI   R0,1
+       JH   PA1
+       MOV  R0,@STATL
+       JMP  PA1
+PA5    MOV  @BOOKN,R0
+       CI   R0,9
+       JHE  PA9
+       MOV  R11,R9
+       MOV  R2,R7
+       BL   @ENTRY
+       MOV  R7,R2
+       MOV  R9,R11
+       MOV  R1,R4
+       LI   R3,RECBUF
+       LI   R5,NSIZE-1
+PA6    MOV  R2,R2
+       JEQ  PA9
+       DEC  R2
+       CB   *R3,@BAR
+       JEQ  PA7
+       MOV  R5,R5
+       JEQ  PA6A
+       MOVB *R3,*R4+
+       DEC  R5
+PA6A   INC  R3
+       JMP  PA6
+PA7    CLR  R0
+       MOVB R0,*R4
+       INC  R3
+       AI   R1,NSIZE
+       LI   R5,31
+PA8    MOV  R2,R2
+       JEQ  PA8B
+       MOV  R5,R5
+       JEQ  PA8B
+       MOVB *R3+,*R1+
+       DEC  R2
+       DEC  R5
+       JMP  PA8
+PA8B   CLR  R0
+       MOVB R0,*R1
+       INC  @BOOKN
+PA9    B    *R11
+
+* write the file: options record, then the entries -> R0 = error (0: none)
+SAVEBK DECT R10
+       MOV  R11,*R10
+       LI   R1,>0012
+       BL   @PABSET
+       BL   @DSRLNK
+       MOV  R0,R0
+       JNE  SB9
+       LI   R1,RECBUF
+       MOVB @HASH,*R1+
+       MOVB @LETP,*R1+
+       MOV  @PAL,R0
+       AI   R0,'0'
+       SWPB R0
+       MOVB R0,*R1+
+       MOVB @LETS,*R1+
+       MOV  @STATL,R0
+       AI   R0,'0'
+       SWPB R0
+       MOVB R0,*R1+
+       BL   @WRREC
+       MOV  R0,R0
+       JNE  SB8
+       CLR  R6
+SB1    C    R6,@BOOKN
+       JHE  SB8
+       MOV  R6,R0
+       BL   @ENTRY
+       MOV  R1,R2
+       LI   R1,RECBUF
+SB2    MOVB *R2+,*R1+
+       JNE  SB2
+       DEC  R1
+       MOVB @BAR,*R1+
+       MOV  R1,R7
+       MOV  R6,R0
+       BL   @ENTRY
+       AI   R1,NSIZE
+       MOV  R1,R2
+       MOV  R7,R1
+SB4    MOVB *R2+,*R1+
+       JNE  SB4
+       DEC  R1
+       BL   @WRREC
+       MOV  R0,R0
+       JNE  SB8
+       INC  R6
+       JMP  SB1
+SB8    DECT R10
+       MOV  R0,*R10
+       LI   R1,>0100
+       BL   @PABOP
+       MOV  *R10+,R0
+SB9    MOV  *R10+,R11
+       B    *R11
+
+* RECBUF up to R1 -> one record; R0 = error
+WRREC  DECT R10
+       MOV  R11,*R10
+       AI   R1,-RECBUF
+       MOV  R1,R5
+       LI   R0,VBUF
+       LI   R1,RECBUF
+       MOV  R5,R2
+       BL   @VMBW
+       LI   R0,PAB+5
+       MOV  R5,R1
+       SWPB R1
+       BL   @VSBW
+       LI   R1,>0300
+       BL   @PABOP
+       MOV  *R10+,R11
+       B    *R11
+
+********************************************************************************
+* DSRLNK for the PAB at >1000: R0 = error code (0 none, >FF no such device)
+* the usual search: every card >1000->1F00, its device list at >4008, the
+* routine called from GPLWS with R12 = CRU base, >8354 = length of the
+* device name, >8356 = its end (the '.') in VDP
+********************************************************************************
+DSRLNK DECT R10
+       MOV  R11,*R10
+       LI   R0,PAB+9
+       BL   @VRA
+       MOVB @VDPRD,R1
+       SRL  R1,8
+       LI   R2,NAMBUF
+       CLR  R3
+DL1    MOVB @VDPRD,R4
+       CB   R4,@PERIOD
+       JEQ  DL2
+       MOVB R4,*R2+
+       INC  R3
+       DEC  R1
+       JNE  DL1
+DL2    MOV  R3,@>8354
+       LI   R0,PAB+10
+       A    R3,R0
+       MOV  R0,@>8356
+       LI   R0,WS
+       LI   R1,WSSAV
+       LI   R2,16
+DL3    MOV  *R0+,*R1+
+       DEC  R2
+       JNE  DL3
+       CLR  @DLFND
+       LWPI GPLWS
+       LI   R12,>0F00
+DLNXT  SBZ  0
+       AI   R12,>0100
+       CI   R12,>2000
+       JEQ  DLEND
+       MOV  R12,@>83D0
+       SBO  0
+       LI   R2,>4000
+       CB   *R2,@HAA
+       JNE  DLNXT
+       AI   R2,8
+DLL    MOV  *R2,R2
+       JEQ  DLNXT
+       MOV  R2,@>83D2
+       MOV  R2,R1
+       INCT R1
+       MOV  *R1+,R9
+       MOVB @>8355,R5
+       CB   R5,*R1+
+       JNE  DLNE
+       SRL  R5,8
+       LI   R6,NAMBUF
+DLC    CB   *R6+,*R1+
+       JNE  DLNE
+       DEC  R5
+       JNE  DLC
+       BL   *R9
+       JMP  DLNE
+       SBZ  0
+       SETO @DLFND
+       JMP  DLEND
+DLNE   SBO  0
+       MOV  @>83D2,R2
+       JMP  DLL
+DLEND  LI   R0,WSSAV
+       LI   R1,WS
+       LI   R2,16
+DL4    MOV  *R0+,*R1+
+       DEC  R2
+       JNE  DL4
+       LWPI WS
+       LI   R0,>FF
+       MOV  @DLFND,R1
+       JEQ  DL9
+       LI   R0,PAB+1
+       BL   @VRA
+       MOVB @VDPRD,R0
+       SRL  R0,13
+DL9    MOV  *R10+,R11
+       B    *R11
+
+********************************************************************************
+* data
+********************************************************************************
+HAA    BYTE >AA
+PERIOD TEXT '.'
+HASH   TEXT '#'
+BAR    TEXT '|'
+LETP   TEXT 'P'
+LETS   TEXT 'S'
+B24    BYTE 24
+B1     BYTE 1
+TTYPE  BYTE 10,>FF,>FA,24,0
+       TEXT 'ANSI'
+       BYTE >FF,>F0
+NAWS   BYTE 6,>FF,>FA,31,0,40,0
+       EVEN
+PABT   BYTE 0,>14
+       DATA VBUF
+       BYTE 80,0
+       DATA 0
+       BYTE 0,12
+       TEXT 'DSK1.BBSLIST'
+PABTE
+       EVEN
+
+* screens: (VDP address, text) ... >FFFF
+LINE40 BYTE >C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4
+       BYTE >C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,0
+       EVEN
+BKSCR  DATA 0*40,MTITLE,1*40,LINE40,2*40+1,MBOOK
+       DATA 13*40+1,MADDR,21*40,LINE40,22*40+1,MKEYS1,23*40+1,MKEYS2,>FFFF
+OPSCR  DATA 0*40,MTITLO,1*40,LINE40,3*40+1,MOPT1,4*40+1,MOPT2,5*40+1,MOPT3
+       DATA 6*40+4,MOPT4,8*40+1,MOPT5,21*40,LINE40,22*40+1,MKEYS3,>FFFF
+FWSCR  DATA 0*40,MTITLE,1*40,LINE40,3*40+1,MFWT,8*40+1,MFW2,9*40+1,MFW3
+       DATA 21*40,LINE40,22*40+1,MKEYS4,>FFFF
+
+MTITLE TEXT ' TI-NET TERM 0.1'
+       BYTE 0
+MTITLO TEXT ' TI-NET TERM 0.1 '
+       BYTE >FA
+       TEXT ' OPZIONI'
+       BYTE 0
+MBOOK  TEXT 'RUBRICA'
+       BYTE 0
+MADDR  TEXT 'OPPURE SCRIVI HOST[:PORTA]'
+       BYTE 0
+MKEYS1 TEXT 'FCTN-E/X SCEGLI  ENTER CHIAMA  F8 SALVA'
+       BYTE 0
+MKEYS2 TEXT 'F3 CANCELLA  F9 OPZIONI  F= ESCI'
+       BYTE 0
+MKEYS3 TEXT '1-2 CAMBIA  F9 TORNA ALLA RUBRICA'
+       BYTE 0
+MKEYS4 TEXT 'UN TASTO PER TORNARE AL MENU'
+       BYTE 0
+MOPT1  TEXT '1  Palette ...........'
+       BYTE 0
+MOPT2  TEXT '2  Riga di stato .....'
+       BYTE 0
+MOPT3  TEXT '   Colonne ........... 40'
+       BYTE 0
+MOPT4  TEXT '(80 con F18A: prossima versione)'
+       BYTE 0
+MOPT5  TEXT 'Firmware APEDSK99: terminale OK'
+       BYTE 0
+MFWT   TEXT 'Il terminale non puo'' partire:'
+       BYTE 0
+MFWOLD TEXT 'il firmware APEDSK99 non ha i comandi'
+       BYTE 0
+MNOAPE TEXT 'APEDSK99 non risponde.'
+       BYTE 0
+MFW2   TEXT 'Serve il firmware del branch'
+       BYTE 0
+MFW3   TEXT 'bbs-terminal (comandi >70->73).'
+       BYTE 0
+MCONN  TEXT 'Connessione a '
+       BYTE 0
+MDOTS  TEXT '...'
+       BYTE 0
+MNOCON TEXT 'Connessione non riuscita.'
+       BYTE 0
+MNAME  TEXT 'NOME: '
+       BYTE 0
+MFULL  TEXT 'Rubrica piena (9 voci).'
+       BYTE 0
+MSAVED TEXT 'Salvato in DSK1.BBSLIST.'
+       BYTE 0
+MDSKER TEXT 'Errore su DSK1.BBSLIST.'
+       BYTE 0
+MEMPTY BYTE 0
+MDELQ  TEXT 'Cancello quale voce (1-9)?'
+       BYTE 0
+MDELD  TEXT 'Voce cancellata.'
+       BYTE 0
+MCLOSD TEXT ' Chiusa dalla BBS. Un tasto per uscire.'
+       BYTE 0
+MBAD   TEXT ' Risposta non valida dal firmware.'
+       BYTE 0
+MMENU  TEXT ' R=RIAGGANCIA  ALTRO TASTO=CONTINUA'
+       BYTE 0
+MANSI  TEXT 'ANSI 40x'
+MROWS  TEXT '23'
+       BYTE 0
+MF9    TEXT 'F9 MENU'
+       BYTE 0
+MYES   TEXT 'SI        '
+       BYTE 0
+MNO    TEXT 'NO        '
+       BYTE 0
+PALNAM DATA PNM0,PNM1,PNM2
+PNM0   TEXT 'BIANCO SU BLU'
+       BYTE 0
+PNM1   TEXT 'VERDE SU NERO'
+       BYTE 0
+PNM2   TEXT 'NERO SU CIANO'
+       BYTE 0
+       EVEN
+
+       COPY "font.a99"
+
+       END

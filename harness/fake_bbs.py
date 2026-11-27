@@ -5,6 +5,9 @@ On connect it negotiates like a real BBS (WILL ECHO, WILL SGA, DO TTYPE, DO NAWS
 asks the terminal type, then sends an ANSI banner reporting what it understood.
 Then it works in character mode, echoing what it receives. Lines:
   BIG   -> sends 5000 bytes of a known pattern (includes IAC escaped as IAC IAC)
+  ANSI  -> an ANSI test page: cursor positioning, erase, colours, save/restore,
+           a cursor position request (ESC[6n) whose answer it prints back
+  KEYS  -> shows the code of every byte received (hex) until Q
   QUIT  -> says goodbye and closes the connection
 
 usage: fake_bbs.py [port] [address]   (default 2323 on 127.0.0.1;
@@ -88,9 +91,48 @@ def handle(conn):
             cmd = cmd.strip().upper()
             if cmd == b'BIG':
                 conn.sendall(big_pattern().replace(bytes([IAC]), bytes([IAC, IAC])) + b'END\r\n')
+            elif cmd == b'ANSI':
+                ansi_page(conn)
+            elif cmd == b'KEYS':
+                keys(conn)
             elif cmd == b'QUIT':
                 conn.sendall(b'Bye\r\n')
                 return
+
+
+def read_until(conn, end, limit=64):
+    data = b''
+    while not data.endswith(end) and len(data) < limit:
+        chunk = conn.recv(1)
+        if not chunk:
+            break
+        data += chunk
+    return data
+
+
+def ansi_page(conn):
+    E = '\x1b['
+    conn.sendall((E + '2J' + E + 'H' + 'ANSI TEST' +
+                  E + '5;10H' + 'XX' +
+                  E + '10;1H' + 'LINEA DA TAGLIARE' + E + '10;6H' + E + 'K' +
+                  E + '3;30H' + E + '1;31m' + 'ROSSO' + E + '0m' +
+                  E + '?25l' + E + '12;3H' + E + '6n').encode())
+    cpr = read_until(conn, b'R')
+    conn.sendall((E + '14;1H' + 'CPR ' + cpr.decode('ascii', 'replace').replace('\x1b', '^') +
+                  E + 's' + E + '20;20H' + 'Z' + E + 'u' + 'U' +
+                  E + '16;1H').encode() +
+                 bytes([0xC9, 0xCD, 0xCD, 0xCD, 0xBB]) + b'\r\n' +
+                 bytes([0xC8, 0xCD, 0xCD, 0xCD, 0xBC]) + b'\r\nANSI DONE\r\n')
+
+
+def keys(conn):
+    conn.sendall(b'KEYS: Q per finire\r\n')
+    while True:
+        c = conn.recv(1)
+        if not c or c == b'Q':
+            break
+        conn.sendall(b'%02X ' % c[0])
+    conn.sendall(b'\r\nKEYS DONE\r\n')
 
 
 def main():

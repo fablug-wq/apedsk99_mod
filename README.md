@@ -2,17 +2,17 @@
 
 A modification of [APEDSK99](https://github.com/jambuur/APEDSK99) by Jochen Buur, the Arduino-based disk controller for the TI-99/4A.
 
-**This branch** adds to the firmware four commands that let a TI program connect to a telnet BBS (or any TCP service) through the APEDSK99 Ethernet shield. The plan is a terminal program in a cartridge ROM, working name *TI-NET TERM*. The `main` branch has the virtual printer only.
+**This branch** adds to the firmware four commands that let a TI program connect to a telnet BBS (or any TCP service) through the APEDSK99 Ethernet shield, and **TI-NET TERM**, a terminal cartridge that uses them. The `main` branch has the virtual printer only.
 
 | Part | Status |
 |---|---|
-| Firmware commands >70–>73 (CONNECT, SEND, RECV, CLOSE) | done, tested in the PC harness (31 checks); not yet tested on real hardware |
-| Terminal program (cartridge ROM) | designed, not written: see `docs/BBS-terminal.md` and the mockups in `docs/terminal-mockup.html` |
+| Firmware commands >70–>73 (CONNECT, SEND, RECV, CLOSE) | done, tested in the PC harness and in the co-simulation; not yet tested on real hardware |
+| TI-NET TERM 0.1 (`ROM/TINETC.bin`, 8K cartridge, needs 32K) | 40 columns, telnet, ANSI, CP437, address book on `DSK1.BBSLIST`; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
 | DSRs | unchanged: the commands work with both `APEDSK99.DSR` and `APEDSKPR.DSR` |
 
 The firmware is compatible with the existing DSRs, and printing, `FGET`, `FPUT` and `TIME` keep working, also during a telnet session. It adds about 390 bytes of flash (about 440 left on the Uno). Details: [Network terminal commands](#network-terminal-commands-work-in-progress) below.
 
-To try it without the hardware: `harness/run.sh` (needs g++ and Python 3). On the hardware: the Extended BASIC test program `NETTEST`, see [Hardware test](docs/BBS-terminal.md#hardware-test-nettest).
+To try it without the hardware: `harness/run.sh` (needs g++ and Python 3), or the co-simulation in `harness/cosim` and `ROM/test_rom.py` (needs [ti99-headless](https://github.com/fablug-wq/ti99-headless), branch `peripheral-cards`). On the hardware: the Extended BASIC test program `NETTEST`, see [Hardware test](docs/BBS-terminal.md#hardware-test-nettest).
 
 ## The virtual printer (also in `main`)
 
@@ -31,7 +31,10 @@ The branch keeps everything from `main`: a second DSR, **APEDSKPR**, that emulat
 | `Arduino/APEDSK99_012s/` | Arduino sketch with the printer and network terminal commands added |
 | `harness/` | PC test harness: the sketch on mock hardware, a fake telnet BBS, flash measurement |
 | `docs/BBS-terminal.md` | design notes for the network terminal (firmware and terminal program) |
-| `docs/terminal-mockup.html` | mockups of the terminal screens |
+| `docs/terminal-mockup.html` | the early mockups of the terminal screens |
+| `docs/screenshots/` | TI-NET TERM in the emulator |
+| `ROM/` | TI-NET TERM: source (`tinet.a99`), font generator, build script, tests, the ROM (`TINETC.bin`) |
+| `harness/cosim/` | co-simulation: the real firmware as the APEDSK99 card of an emulated TI |
 
 The first commit holds the original files unchanged, so a `git diff` against it shows exactly what was modified.
 
@@ -110,7 +113,7 @@ Arduino errors are passed back through `CALLST` and become error 6 in the PAB. U
 
 ## Network terminal commands (work in progress)
 
-Four firmware commands let a TI program open a TCP connection, for example to a telnet BBS. Design notes and the plan for the terminal program: `docs/BBS-terminal.md`. They need no DSR support: the program writes `CALLBF` and `ACOMND` directly, so they work with either DSR. Bytes are raw (no TI BASIC screen bias). The firmware is only a pipe: telnet negotiation and the screen are up to the TI program.
+Four firmware commands let a TI program open a TCP connection, for example to a telnet BBS. The terminal cartridge that uses them, TI-NET TERM, and its design: `docs/BBS-terminal.md`. They need no DSR support: the program writes `CALLBF` and `ACOMND` directly, so they work with either DSR. Bytes are raw (no TI BASIC screen bias). The firmware is only a pipe: telnet negotiation and the screen are up to the TI program.
 
 | Code | Command | TI → `CALLBF` | Result |
 |---|---|---|---|
@@ -123,10 +126,15 @@ Four firmware commands let a TI program open a TCP connection, for example to a 
 - A drop by the other side shows up as RECV = >FF once all received data has been read. Right after the drop SEND may still report success.
 - Detecting older firmware: write >FE to `CALLBF` and send RECV. Older firmware ignores the command and leaves the >FE in place.
 
+## TI-NET TERM
+
+Load `ROM/TINETC.bin` as an 8K cartridge (non-banked, >6000) on a loader that takes one (FinalGROM99, a flash cartridge, an emulator). With the 32K expansion and the firmware of this branch it appears as TI-NET TERM in the menu. Usage, keys and the `DSK1.BBSLIST` format: `docs/BBS-terminal.md`.
+
 ## Building
 
 - **DSR:** `xas99.py -R -b TI/APEDSKPR.a99 -o APEDSKPR.bin` ([xdt99](https://github.com/endlos99/xdt99)), then pad with zeros to 8192 bytes. Assembled the same way, the original source is byte-identical to `APEDSK99.DSR`. The DSR currently uses all but 134 bytes of its space.
 - **Sketch:** Arduino IDE, board Uno. It uses about 98.5% of flash.
+- **TI-NET TERM:** `ROM/build.sh` (xdt99's `xas99.py`; `XDT99` = its folder): font, assembly, padding to 8K.
 - **PC harness:** `harness/run.sh` compiles the sketch with g++ against mock hardware (DSR RAM, SD card folder, Ethernet on host sockets, FTP folder, fixed NTP time) and tests the terminal commands against `harness/fake_bbs.py`, a fake telnet BBS. The hardware itself (timing, SPI, the W5100) is not simulated.
 
 ## Credits

@@ -1,1 +1,3 @@
 harness/cosim/firmware_server
+__pycache__/
+ROM/tinet.lst

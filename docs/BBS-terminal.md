@@ -1,6 +1,12 @@
 # Network terminal for telnet BBSes – design notes
 
-Status, 27 November 2026: the **firmware side is done** and tested in the PC harness. Not yet tested on real hardware. The terminal program (cartridge ROM, working name *TI-NET TERM*) is not written yet; these notes describe what it should do.
+Status, 27 November 2026:
+
+- **firmware:** done, tested in the PC harness and in the co-simulation (below);
+- **TI-NET TERM 0.1**, the terminal cartridge (`ROM/`): written in assembly, 40 columns, tested on the emulated console against the real firmware and DSR;
+- **real hardware:** not tested yet.
+
+Screenshots from the emulator: `docs/screenshots/`. The early mockups: `docs/terminal-mockup.html`.
 
 Mockups of the screens: `docs/terminal-mockup.html` (open it in a browser).
 
@@ -38,27 +44,46 @@ Facts that matter for the program:
 - Status codes are written to `CALLST` directly: `CALLstatus()` with an error code would overwrite `CALLBF` with the error text.
 - Cost: about +390 bytes of flash (about 440 left), no static RAM; 32 bytes of stack during the command.
 
-## The terminal program
+## The terminal program: TI-NET TERM 0.1
 
-### Start-up
+An 8K cartridge ROM (`ROM/TINETC.bin`, source `ROM/tinet.a99`, font `ROM/font.py`). It needs the 32K memory expansion and the firmware of this branch, and works with either APEDSK99 DSR.
 
-1. Chosen from the cartridge menu.
-2. Silent checks: firmware (sentinel, above) and F18A.
-3. Firmware without the terminal: an error screen that says so, and nothing else.
-4. Otherwise the **address book** screen: pick an entry with its number + ENTER, or type `host[:port]`.
-5. During a session FCTN-9 opens a menu: hang up, options, back to the address book.
+### Using it
 
-A modem-style command prompt (`ATDT host:port`) could be added later as a second way in.
+1. Choose TI-NET TERM from the cartridge menu.
+2. It checks the firmware (CLOSE, then RECV with the sentinel). Older firmware, or no APEDSK99: a screen that says so, and any key goes back to the title screen.
+3. The **address book**: type `host[:port]` and ENTER, or choose an entry with FCTN-E / FCTN-X (up / down) and ENTER.
+   - FCTN-8 saves the address typed in the field as a new entry (it asks the name, up to 14 characters).
+   - FCTN-3 deletes an entry (it asks which one).
+   - FCTN-9 opens the options, FCTN-= goes back to the title screen.
+4. During a session: what you type goes to the BBS. FCTN-9 opens the menu on the status row: R hangs up and goes back to the address book, any other key carries on. When the BBS hangs up, the status row says so and any key goes back.
 
-### Address book and options: a file on disk
+Keys in a session:
 
-ROM is read-only and RAM is lost at power-off, so the address book and the options are kept **in a file on disk** (name to be decided, e.g. `DSK1.BBSLIST`), read and written with the normal DSR file calls. This costs no Arduino flash and works with both DSRs; the ROM needs a small DSRLNK and PAB handling.
+| Key | Sends |
+|---|---|
+| ENTER | CR (>0D) |
+| FCTN-S | BS (>08) |
+| FCTN-1 (DEL) | DEL (>7F) |
+| FCTN-7 (AID) | ESC (>1B) |
+| FCTN-E / X / D | ESC [ A / B / C (up, down, right) |
+| CTRL-A … CTRL-Z | >01 … >1A |
 
-Options: columns (40 / 80 with F18A), palette, status line on/off, local echo (auto = from the server), what ENTER and BACK send.
+### Address book and options: `DSK1.BBSLIST`
+
+ROM is read-only and RAM is lost at power-off, so the address book and the options are kept **in a file on disk**, read and written through the normal DSR file calls (the ROM has its own DSRLNK). This costs no Arduino flash and works with both DSRs.
+
+`DSK1.BBSLIST` is DIS/VAR 80: first `#P<palette>S<status row>` (e.g. `#P0S1`), then one record per entry, `name|host[:port]`, at most 9. It can be made on a PC too (a text file put on the disk image with xdm99). Without the file the address book starts empty; the first save creates it.
+
+Options (FCTN-9 in the address book; saved when you leave the screen):
+
+- palette: white on blue, green on black, black on cyan;
+- status row: on (the BBS gets 23 rows) or off (24 rows);
+- 40 columns only in this version; 80 columns with the F18A are planned.
 
 ### Telnet
 
-A working prototype is the `Telnet` struct in `harness/test_terminal.cpp`.
+As implemented in `TNBYTE` (the `Telnet` struct in `harness/test_terminal.cpp` is the same logic in C++):
 
 - Server WILL ECHO and WILL SGA → answer DO (otherwise no echo and no character mode).
 - Server DO TTYPE → WILL TTYPE; on SB TTYPE SEND answer SB TTYPE IS `ANSI`.
@@ -68,18 +93,27 @@ A working prototype is the `Telnet` struct in `harness/test_terminal.cpp`.
 
 ### Screen
 
-- 40 columns on the TMS9918 (text mode), 80 columns optional with an F18A.
-- **Status line:** if it is on, it takes the last row, so NAWS must report **40×23** (or 80×23), not 24. On the 9918 it can't be drawn in reverse video without a second, inverted copy of the characters, so it is separated by a line instead.
-- ANSI subset (ECMA-48, ANSI.SYS flavour): cursor `A B C D`, `H`/`f`, `s`/`u`; erase `2J`, `K`; SGR 0, 1, 5, 7, 30–37, 40–47; answer `ESC[6n` with `ESC[row;colR` (many BBSes use it to detect ANSI).
-- CP437 characters 128–255 (frames, blocks, shades): a table of 6×8 patterns in the ROM, indexed directly by the received byte.
-- Colours: ignored on the 9918 (text mode has one colour pair for the whole screen); full on the F18A (per-position attributes).
+- 40 columns, TMS9918 text mode. Characters 32–95 come from the console GROM (>06B4), 96–255 from the ROM: true lower case, CP437 accented letters, box drawing (single, double, mixed), blocks, shades, some symbols.
+- **Status row** (row 24, optional): the host, `ANSI 40x23`, the connection time, `F9 MENU`. With it the BBS gets 23 rows (NAWS 40×23).
+- ANSI: cursor `A B C D G d`, `H`/`f`, `s`/`u` and `ESC 7`/`ESC 8`; erase `J` (0, 1, 2) and `K` (0, 1, 2); `ESC[6n` answered with `ESC[row;colR`; `ESC c` clears. SGR (`m`) and private sequences (`ESC[?…`) are read and ignored: text mode has one colour pair for the whole screen. Line wrap is deferred to the next character, as on a VT100.
+- The cursor is a block drawn while no data arrives.
 - ANSI BBSes expect 25 rows; the TI has 24.
+- Planned: 80 columns and colours with the F18A; inverse video.
+
+KSCAN restores VDP register 1 from >83D4 at every key (to undo the screen saver): the ROM puts its own value (text mode) there, or the first key would switch the screen back to graphics mode.
 
 ### Speed
 
-Up to 31 bytes per exchange, an estimated 1–1.5 ms each on the hardware, so well above 9600 baud. Drawing on screen is the limit.
+Measured in the emulator: about 46,000 CPU cycles for a packet of 31 bytes (about 1,500 a byte, more when the screen scrolls), so about 2 KB a second at 3 MHz, twice 9600 baud, before the time the Arduino takes for each RECV (estimated 1–1.5 ms). KSCAN costs about 2,500 cycles and runs once a loop.
 
 ## Testing
+
+- `harness/cosim/`: **co-simulation**. The real sketch runs as a process (`firmware_server`) and is the firmware of an APEDSK99 card in an emulated TI-99/4A ([ti99-headless](https://github.com/fablug-wq/ti99-headless), branch `peripheral-cards`: js99er with the real console ROM and GROM). Every word the TI writes into >4000–>5FFF runs `loop()` once, as the GAL signals on the hardware (A15 = 0: once per word), and the TI waits meanwhile. So the real DSR (disks, CALLs) and the terminal commands run as on the machine, with the SD card and FTP server as folders and the network through the host. `test_cosim.py`: TI BASIC SAVE/OLD; `NETTEST` in Extended BASIC against the fake BBS.
+- `ROM/test_rom.py`: TI-NET TERM in the co-simulation, 8 tests: the address book screen; a session (negotiation, ANSI and CP437 on screen, the ANSI test page with `ESC[6n`, the codes the keys send, FCTN-9 R); 5000 bytes; the BBS hanging up; a refused connection; saving, reading back, choosing and deleting entries in `DSK1.BBSLIST`; the options (palette, status row → NAWS 40×24, kept on disk); the firmware of `main` (the ROM says it lacks the commands). `ROM/screenshots.py` makes `docs/screenshots/`.
+
+  ```
+  TI99HEADLESS=/path/to/ti99-headless XDT99=/path/to/xdt99 python3 ROM/test_rom.py -v
+  ```
 
 - `harness/run.sh`: compiles the sketch with g++ against mock hardware (DSR RAM array, SD card folder, Ethernet on host sockets with the 4-socket limit and the reset-on-first-`begin` behaviour, FTP folder, fixed NTP time) and runs `harness/test_terminal.cpp` against `harness/fake_bbs.py`, a fake telnet BBS. 31 checks; with the previous firmware 13 pass. Timing, SPI and the W5100 itself are not simulated.
 - `harness/size.sh`: flash and RAM of the sketch without the IDE.
