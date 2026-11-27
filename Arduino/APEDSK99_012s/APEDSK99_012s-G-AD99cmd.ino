@@ -607,6 +607,73 @@
         }     
         break;
 
+        //***** network terminal (BBS / telnet): a TI program or cartridge talks to CALLBF / ACOMND directly,
+        //***** works with any DSR. Bytes are raw (no TI BASIC bias). The TCP connection stays open in the
+        //***** W5100 between commands (Ethernet.begin() only resets the chip the very first time)
+        case 112:                                                                                         //CONNECT: CALLBF = "host[:port]" + >00 (default port 23)
+        case 113:                                                                                         //SEND:    CALLBF[0] = n (1-31), CALLBF[1..n] = data
+        case 114:                                                                                         //RECV:    -> CALLBF[0] = n (0 = nothing, >FF = connection lost), CALLBF[1..n]
+        case 115:                                                                                         //CLOSE
+        {
+          EtherStart();                                                                                   //start Ethernet (no reset after the first time)
+          byte nbuf[32];
+          byte nn;
+
+          if ( currentA99cmd == 112 ) {                                                                   //CONNECT
+            unsigned int nport = 23;                                                                      //telnet
+            for ( nn = 0; nn < 31; ++nn ) {                                                               //copy "host[:port]"
+              if ( (nbuf[nn] = read_DSRAM( CALLBF + nn )) == 0 ) {
+                break;
+              }
+            }
+            nbuf[nn] = 0;
+            char *pp = strchr( (char *)nbuf, ':' );
+            if ( pp ) {                                                                                   //port given?
+              *pp++ = 0;
+              nport = 0;
+              while ( *pp >= '0' && *pp <= '9' ) {
+                nport = nport * 10 + ( *pp++ - '0' );
+              }
+            }
+            client.setConnectionTimeout( 5000 );
+            if ( !client.connect( (char *)nbuf, nport ) ) {                                               //DNS name or dotted IP address
+              write_DSRAM( CALLST, FNTPConnect );                                                         //can't connect
+            }
+
+          } else if ( currentA99cmd == 113 ) {                                                            //SEND
+            nn = read_DSRAM( CALLBF );
+            if ( nn > 31 ) {
+              nn = 31;
+            }
+            for ( byte ii = 0; ii < nn; ++ii ) {
+              nbuf[ii] = read_DSRAM( CALLBF + 1 + ii );
+            }
+            if ( nn && client.write( nbuf, nn ) != nn ) {                                                //(n = 0: nothing to send)
+              write_DSRAM( CALLST, FNTPConnect );                                                         //not connected / connection lost
+            }
+
+          } else if ( currentA99cmd == 114 ) {                                                            //RECV
+            int na = client.available();
+            nn = ( na > 31 ) ? 31 : na;
+            if ( nn ) {
+              client.read( nbuf, nn );
+              for ( byte ii = 0; ii < nn; ++ii ) {
+                write_DSRAM( CALLBF + 1 + ii, nbuf[ii] );
+              }
+            } else if ( !client.connected() ) {                                                           //nothing left to read and closed by the other side
+              nn = 0xFF;
+            }
+            write_DSRAM( CALLBF, nn );
+
+          } else {                                                                                        //CLOSE
+            client.stop();
+          }
+
+          EtherStop();                                                                                    //back to TI_INT (the connection stays open)
+          noExec();
+        }
+        break;
+
         default:                                                                                          //catch-all safety
         {
           noExec();

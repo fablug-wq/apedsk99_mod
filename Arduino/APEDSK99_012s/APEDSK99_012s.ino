@@ -59,7 +59,7 @@ SdFile file;
 
 #include <Ethernet.h>
 byte MAC[] =    { 0x06, 0xAA, 0xBB, 0xCC, 0xDD, 0x99 };                       //EthernetShield MAC address
-EthernetClient  client;
+EthernetClient  client;                                                       //network terminal (commands >70-73)
 EthernetClient  ftpControl;
 EthernetClient  ftpData;
 

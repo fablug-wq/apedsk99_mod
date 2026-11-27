@@ -144,8 +144,7 @@ void EtherStart( void ) {
   Ethernet.begin( MAC, ACFG.ipaddress );                                                              //... with set MAC address and IP address
 }
 
-void EtherStop( void ) {
-  client.stop();                                                                                      //stop Ethernet client
+void EtherStop( void ) {                                                                              //(the network terminal connection in "client" stays open)
   pinAsInput(TI_INT);                                                                                 //disable EthernetShield SS / enable TI_INT  
 }
 

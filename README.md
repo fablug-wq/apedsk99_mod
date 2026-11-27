@@ -90,10 +90,26 @@ The DSR adds `PIO` and `RS232` to the device chain after `DSK3`; both use the sa
 
 Arduino errors are passed back through `CALLST` and become error 6 in the PAB. Unsupported opcodes return error 3.
 
+## Network terminal commands (work in progress)
+
+Four firmware commands let a TI program open a TCP connection, for example to a telnet BBS. They need no DSR support: the program writes `CALLBF` and `ACOMND` directly, so they work with either DSR. Bytes are raw (no TI BASIC screen bias). The firmware is only a pipe: telnet negotiation and the screen are up to the TI program.
+
+| Code | Command | TI → `CALLBF` | Result |
+|---|---|---|---|
+| >70 | CONNECT | `host[:port]` + >00, max 31 characters; host name or dotted IP; default port 23 | `CALLST` >FF ok, 2 = can't connect |
+| >71 | SEND | [0] = n (1–31), [1..n] data | `CALLST` >FF ok, 2 = not connected |
+| >72 | RECV | — | [0] = n (0 = nothing yet, >FF = connection closed), [1..n] data |
+| >73 | CLOSE | — | `CALLST` >FF |
+
+- The connection stays open between commands, and printing, `FGET`, `FPUT` and `TIME` can run during a session. The W5100 has 4 sockets: telnet, NTP, FTP control and FTP data use all of them during a transfer.
+- A drop by the other side shows up as RECV = >FF once all received data has been read. Right after the drop SEND may still report success.
+- Detecting older firmware: write >FE to `CALLBF` and send RECV. Older firmware ignores the command and leaves the >FE in place.
+
 ## Building
 
 - **DSR:** `xas99.py -R -b TI/APEDSKPR.a99 -o APEDSKPR.bin` ([xdt99](https://github.com/endlos99/xdt99)), then pad with zeros to 8192 bytes. Assembled the same way, the original source is byte-identical to `APEDSK99.DSR`. The DSR currently uses all but 134 bytes of its space.
-- **Sketch:** Arduino IDE, board Uno. It uses about 97% of flash.
+- **Sketch:** Arduino IDE, board Uno. It uses about 98.5% of flash.
+- **PC harness:** `harness/run.sh` compiles the sketch with g++ against mock hardware (DSR RAM, SD card folder, Ethernet on host sockets, FTP folder, fixed NTP time) and tests the terminal commands against `harness/fake_bbs.py`, a fake telnet BBS. The hardware itself (timing, SPI, the W5100) is not simulated.
 
 ## Credits
 
