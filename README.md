@@ -12,7 +12,7 @@ A modification of [APEDSK99](https://github.com/jambuur/APEDSK99) by Jochen Buur
 
 The firmware is compatible with the existing DSRs, and printing, `FGET`, `FPUT` and `TIME` keep working, also during a telnet session. It adds about 390 bytes of flash (about 440 left on the Uno). Details: [Network terminal commands](#network-terminal-commands-work-in-progress) below.
 
-To try it without the hardware: `harness/run.sh` (needs g++ and Python 3).
+To try it without the hardware: `harness/run.sh` (needs g++ and Python 3). On the hardware: the Extended BASIC test program `NETTEST`, see [Hardware test](docs/BBS-terminal.md#hardware-test-nettest).
 
 ## The virtual printer (also in `main`)
 
@@ -27,6 +27,7 @@ The branch keeps everything from `main`: a second DSR, **APEDSKPR**, that emulat
 | `SD/CALLHLPP.TXT` | help screen for the new DSR (`CALL AHLP`) |
 | `TI/APEDSK99.a99` | source of the original DSR |
 | `TI/APEDSKPR.a99` | source of the new DSR |
+| `TI/NETTEST.xb`, `SD/DISKS/NETTEST.DSK` | Extended BASIC test terminal for the network commands, as source and on a disk image |
 | `Arduino/APEDSK99_012s/` | Arduino sketch with the printer and network terminal commands added |
 | `harness/` | PC test harness: the sketch on mock hardware, a fake telnet BBS, flash measurement |
 | `docs/BBS-terminal.md` | design notes for the network terminal (firmware and terminal program) |

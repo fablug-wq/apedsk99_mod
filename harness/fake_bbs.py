@@ -7,7 +7,8 @@ Then it works in character mode, echoing what it receives. Lines:
   BIG   -> sends 5000 bytes of a known pattern (includes IAC escaped as IAC IAC)
   QUIT  -> says goodbye and closes the connection
 
-usage: fake_bbs.py [port]   (default 2323, listens on 127.0.0.1)
+usage: fake_bbs.py [port] [address]   (default 2323 on 127.0.0.1;
+       use address 0.0.0.0 to reach it from the TI over the LAN)
 """
 import socket, sys, time
 
@@ -94,9 +95,10 @@ def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 2323
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('127.0.0.1', port))
+    addr = sys.argv[2] if len(sys.argv) > 2 else '127.0.0.1'
+    s.bind((addr, port))
     s.listen(1)
-    print('fake_bbs: listening on %d' % port, flush=True)
+    print('fake_bbs: listening on %s:%d' % (addr, port), flush=True)
     while True:
         conn, _ = s.accept()
         try:

@@ -84,3 +84,25 @@ Up to 31 bytes per exchange, an estimated 1–1.5 ms each on the hardware, so we
 - `harness/run.sh`: compiles the sketch with g++ against mock hardware (DSR RAM array, SD card folder, Ethernet on host sockets with the 4-socket limit and the reset-on-first-`begin` behaviour, FTP folder, fixed NTP time) and runs `harness/test_terminal.cpp` against `harness/fake_bbs.py`, a fake telnet BBS. 31 checks; with the previous firmware 13 pass. Timing, SPI and the W5100 itself are not simulated.
 - `harness/size.sh`: flash and RAM of the sketch without the IDE.
 - On the hardware, before the ROM: an Extended BASIC program with 32K. `CALL INIT`, `CALL LOAD(24520, …)` to fill `CALLBF`, `CALL LOAD(24552, 112)` for CONNECT, then in a loop `CALL LOAD(24552, 114)` and `CALL PEEK(24520, N)`, `CALL PEEK(24521, …)` for RECV.
+
+## Hardware test: `NETTEST`
+
+A small Extended BASIC terminal to check the firmware on the real machine before the ROM exists. Source `TI/NETTEST.xb`, ready on the disk image `SD/DISKS/NETTEST.DSK` (tokenized with xdt99 `xbas99.py -c`, disk made with `xdm99.py`).
+
+It does: a firmware check (CLOSE, then RECV with the >FE sentinel), CONNECT to the address you type, then a loop of keyboard → SEND and RECV → screen. Telnet: DO to WILL ECHO / WILL SGA, DONT / WONT to everything else (no TTYPE / NAWS: that is for the ROM). ESC sequences are skipped, characters outside 32–126 are dropped, lines wrap at 28 columns. FCTN-9 closes the connection. It counts the bytes received.
+
+Steps:
+
+1. Upload the sketch from this branch to the Arduino.
+2. Copy `NETTEST.DSK` into the `DISKS` folder of the SD card.
+3. Extended BASIC with 32K: `CALL MDSK(1,"NETTEST")`, then `RUN "DSK1.NETTEST"`.
+4. At `HOST[:PORTA]?` type a BBS address, or the PC running the fake BBS: `python3 harness/fake_bbs.py 2323 0.0.0.0` on the PC, `192.168.1.x:2323` on the TI.
+
+What to check:
+
+- the firmware is recognised and CONNECT works, with a host name and with a dotted IP;
+- the banner appears and what you type comes back as echo;
+- the session survives other APEDSK99 network commands: press FCTN-4 (BREAK), run `CALL TIME`, then `CON`, and keep typing;
+- `QUIT` on the fake BBS: the program reports the connection closed by the other side.
+
+Extended BASIC handles a few dozen bytes per second, so `BIG` (5000 bytes) on the fake BBS takes a while: it checks the data still arrives complete, not the speed. The speed of the firmware itself needs the ROM, or a small assembly loop.
