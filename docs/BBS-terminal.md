@@ -61,7 +61,7 @@ It needs the 32K memory expansion and the firmware of this branch, and works wit
    - FCTN-8 saves the address typed in the field as a new entry (it asks the name, up to 14 characters).
    - FCTN-3 deletes an entry (it asks which one).
    - FCTN-9 opens the options, FCTN-= goes back to the title screen.
-4. During a session: what you type goes to the BBS. FCTN-9 opens the menu on the status row: H hangs up and goes back to the address book (R in the Italian ROM), any other key carries on. When the BBS hangs up, the status row says so and any key goes back.
+4. During a session: what you type goes to the BBS. FCTN-9 opens the menu on the status row: H hangs up and goes back to the address book (in both languages), any other key carries on. When the BBS hangs up, the status row says so and any key goes back.
 
 Keys in a session:
 

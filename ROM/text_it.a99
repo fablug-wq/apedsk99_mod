@@ -1,5 +1,5 @@
 * text_it.a99 - TI-NET TERM texts in Italian (assembled with -D ITALIAN)
-HANGK  EQU  'R'                       * the key that hangs up in the session menu
+HANGK  EQU  'H'                       * the key that hangs up in the session menu
 MTITLE TEXT ' TI-NET TERM 0.2'
        BYTE 0
 MTITLO TEXT ' TI-NET TERM 0.2 '
@@ -65,7 +65,7 @@ MCLOSD TEXT ' Chiusa dalla BBS. Un tasto per uscire.'
        BYTE 0
 MBAD   TEXT ' Risposta non valida dal firmware.'
        BYTE 0
-MMENU  TEXT ' R=RIAGGANCIA  ALTRO TASTO=CONTINUA'
+MMENU  TEXT ' H=RIAGGANCIA  ALTRO TASTO=CONTINUA'
        BYTE 0
 MANSI  TEXT 'ANSI 40x'
 MROWS  TEXT '23'

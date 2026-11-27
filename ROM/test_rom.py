@@ -234,15 +234,15 @@ class TestRom(unittest.TestCase):
             self.assertEqual(m.vregs()[7], 0x31)
 
     def test_italian(self):
-        """the Italian ROM (-D ITALIAN): same code, other texts, R hangs up"""
+        """the Italian ROM (-D ITALIAN): same code, other texts, H hangs up as in English"""
         with th.Machine(ROM_IT, disk="NONE", cards=[self.rig.card()]) as m:
             m.menu(2)
             wait_for(m, "RUBRICA", 300)
             self.assertIn("OPPURE SCRIVI HOST[:PORTA]", rows(m)[13])
             self.connect(m)
             m.press("FCTN", "9")
-            wait_for(m, "R=RIAGGANCIA")
-            m.type("R")
+            wait_for(m, "H=RIAGGANCIA")
+            m.type("H")
             wait_for(m, "RUBRICA")
 
     def test_old_firmware(self):
