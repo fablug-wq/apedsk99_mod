@@ -38,7 +38,7 @@ Facts that matter for the program:
 
 ### Implementation notes (firmware)
 
-- `case 112…115` in `APEDSK99_012s-G-AD99cmd.ino`, using the global `client`, which was unused before. `EtherStop()` no longer calls `client.stop()`.
+- `case 112…115` in `APEDSK99_012n-G-AD99cmd.ino`, using the global `client`, which was unused before. `EtherStop()` no longer calls `client.stop()`.
 - `EtherStart()` is unchanged: with Ethernet 2.0.x, `W5100.init()` resets the chip only on the first call; later `Ethernet.begin()` calls only rewrite MAC/IP/gateway/subnet, and open sockets survive.
 - The shared pin (`ETH_CS` = `TI_INT`, PD2, active low) already selected the W5100 on every TI write before this change, without SPI clock, so with no effect. Nothing changes electrically.
 - Status codes are written to `CALLST` directly: `CALLstatus()` with an error code would overwrite `CALLBF` with the error text.

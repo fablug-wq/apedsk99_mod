@@ -3,12 +3,13 @@
 # starts the fake BBS and runs the terminal test.   usage: harness/run.sh
 set -e
 H=$(cd "$(dirname "$0")" && pwd)
-SK="$H/../Arduino/APEDSK99_012s"
+SK="$H/../Arduino/APEDSK99_012n"
 W=$(mktemp -d)
-mkdir -p "$W/sk/APEDSK99_012s"
-cp "$SK"/*.ino "$W/sk/APEDSK99_012s/"
-rm "$W/sk/APEDSK99_012s/APEDSK99_012s-B-HAL.ino"
-python3 "$H/inobuild.py" "$W/sk/APEDSK99_012s" "$W/out" 2>/dev/null
+N=$(basename "$SK")
+mkdir -p "$W/sk/$N"
+cp "$SK"/*.ino "$W/sk/$N/"
+rm "$W/sk/$N/"*-B-HAL.ino
+python3 "$H/inobuild.py" "$W/sk/$N" "$W/out" 2>/dev/null
 g++ -std=gnu++17 -fpermissive -w -g -I"$H/include" "$W/out/all.cpp" "$H/mocks.cpp" "$H/test_terminal.cpp" -o "$W/test"
 
 mkdir -p "$W/sd/DISKS" "$W/ftp"

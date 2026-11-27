@@ -33,7 +33,7 @@
 
   $Author: Jochen Buur $
   $Date: February 2023 $
-  $Revision: 0.12s $
+  $Revision: 0.12n $  (0.12s + virtual printer + network terminal, fablug-wq/apedsk99_mod)
   
   This software is freeware and can be modified, re-used or thrown away without any restrictions.
   Use this code at your own risk.

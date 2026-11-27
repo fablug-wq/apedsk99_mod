@@ -1,5 +1,5 @@
 // PC harness: minimal Arduino environment for the APEDSK99 sketch.
-// The sketch tabs are compiled unchanged, except APEDSK99_012s-B-HAL.ino which is replaced
+// The sketch tabs are compiled unchanged, except the -B-HAL.ino tab which is replaced
 // by the functions below (DSR RAM is a plain array, TI_INT is a bit in a fake PIND).
 #pragma once
 #include <stdint.h>
@@ -31,7 +31,7 @@ char *ltoa(long v, char *buf, int base);
 // fake AVR ports (only TI_INT = PD2 matters)
 extern uint8_t PORTB, PORTC, PORTD, DDRB, DDRC, DDRD, PINB, PINC, PIND;
 
-// ---- replacement for APEDSK99_012s-B-HAL.ino
+// ---- replacement for the -B-HAL.ino tab
 #define CLOCK     17
 #define LATCH     18
 #define DS        19

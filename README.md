@@ -28,7 +28,7 @@ The branch keeps everything from `main`: a second DSR, **APEDSKPR**, that emulat
 | `TI/APEDSK99.a99` | source of the original DSR |
 | `TI/APEDSKPR.a99` | source of the new DSR |
 | `TI/NETTEST.xb`, `SD/DISKS/NETTEST.DSK` | Extended BASIC test terminal for the network commands, as source and on a disk image |
-| `Arduino/APEDSK99_012s/` | Arduino sketch with the printer and network terminal commands added |
+| `Arduino/APEDSK99_012n/` | Arduino sketch 0.12n: the original 0.12s with the printer and network terminal commands added |
 | `harness/` | PC test harness: the sketch on mock hardware, a fake telnet BBS, flash measurement |
 | `docs/BBS-terminal.md` | design notes for the network terminal (firmware and terminal program) |
 | `docs/terminal-mockup.html` | the early mockups of the terminal screens |
@@ -52,7 +52,7 @@ The DSR space was almost full, so to make room for the printer this DSR keeps on
 ## Installation
 
 1. Copy `SD/APEDSKPR.DSR` and `SD/CALLHLPP.TXT` to the root of the SD card, next to `APEDSK99.DSR` and `CALLhlp.txt`.
-2. Upload the sketch in `Arduino/APEDSK99_012s` to the Arduino Uno. It needs the libraries from the original project. The same firmware works with both DSRs: it reads the DSR version (`v12s` or `v12p`) to pick the right help file.
+2. Upload the sketch in `Arduino/APEDSK99_012n` to the Arduino Uno. It needs the libraries from the original project. The same firmware works with both DSRs: it reads the DSR version (`v12s` or `v12p`) to pick the right help file.
 
 ## Usage
 

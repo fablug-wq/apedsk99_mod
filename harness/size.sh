@@ -8,7 +8,7 @@
 # usage: harness/size.sh [sketch_dir]
 set -e
 H=$(cd "$(dirname "$0")" && pwd)
-SK=${1:-$H/../Arduino/APEDSK99_012s}
+SK=${1:-$H/../Arduino/APEDSK99_012n}
 W=$(mktemp -d)
 python3 "$H/inobuild.py" "$SK" "$W/build_sk" 2>/dev/null
 arduino-cli compile --fqbn arduino:avr:uno --build-path "$W/bin" \
