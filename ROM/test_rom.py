@@ -18,13 +18,44 @@ sys.path.insert(0, os.path.join(REPO, "harness", "cosim"))
 import test_cosim as tc                                     # noqa: E402
 
 th = tc.th
-ROM = os.path.join(HERE, "TINETC.bin")                      # English
-ROM_IT = os.path.join(HERE, "TINETITC.bin")                 # Italian
+ROM = os.path.join(HERE, "TINET8.bin")                      # English, 16K banked
+ROM_IT = os.path.join(HERE, "TINETI8.bin")                 # Italian
 HOST = "127.0.0.1:%d" % tc.BBS_PORT
 
 
 def rows(m):
     return [r.rstrip() for r in m.screen_text()]
+
+
+sys.path.insert(0, HERE)
+import font64                                               # noqa: E402
+_NIB = {}
+for _code, _g in enumerate(font64.table()):
+    if 32 <= _code < 127 or _code >= 176:
+        _NIB.setdefault(tuple(b >> 4 for b in _g), _code)
+
+
+def rows64(m):
+    """the 64-column bitmap screen as text: each 4 x 8 cell matched against the font"""
+    pat = m.vram(0, 0x1800)
+    out = []
+    for r in range(24):
+        line = []
+        for c in range(64):
+            base = r * 256 + (c >> 1) * 8
+            cell = tuple((pat[base + y] >> (0 if c & 1 else 4)) & 15 for y in range(8))
+            code = _NIB.get(cell)
+            line.append("?" if code is None else (chr(code) if code < 127 else "\u00b7"))
+        out.append("".join(line).rstrip())
+    return out
+
+
+def wait64(m, text, max_frames=900, step=10):
+    for _ in range(max_frames // step):
+        if any(text in r for r in rows64(m)):
+            return
+        m.frames(step)
+    raise AssertionError("%r not on the 64-column screen: %s" % (text, [r for r in rows64(m) if r]))
 
 
 def wait_for(m, text, max_frames=900, step=10):
@@ -61,7 +92,7 @@ class TestRom(unittest.TestCase):
     def test_book_screen(self):
         with self.machine() as m:
             r = rows(m)
-            self.assertEqual(r[0].strip(), "TI-NET TERM 0.2")
+            self.assertEqual(r[0].strip(), "TI-NET TERM 0.3")
             self.assertIn("OR TYPE HOST[:PORT]", r[13])
             self.assertEqual(m.vregs()[1] & 0x18, 0x10)                 # text mode
             m.type("abc{LEFT}")                                       # FCTN-S deletes
@@ -163,6 +194,47 @@ class TestRom(unittest.TestCase):
             self.assertNotIn("XY", rows(m))
         with open(os.path.join(self.rig.sd, "DISKS", "_APEDSK1.DSK"), "rb") as f:
             self.assertIn(b"#P0S1E2N1", f.read())
+
+    def test_64_columns(self):
+        """bitmap mode, 64 x 23 for the BBS, the same ANSI handling; back to text mode after"""
+        with self.machine() as m:
+            m.press("FCTN", "9")
+            wait_for(m, "OPTIONS")
+            m.type("5")
+            self.assertIn("64", rows(m)[7])
+            m.press("FCTN", "9")
+            wait_for(m, "ADDRESS BOOK")
+            m.type(HOST + "\r")
+            wait64(m, "READY")
+            v = m.vregs()
+            self.assertEqual((v[0] & 2, v[1] & 0x18, v[3], v[4]), (2, 0, 0x9F, 0x03))   # bitmap
+            r = rows64(m)
+            self.assertEqual(r[0], "FAKE BBS")
+            self.assertEqual(r[3], "NAWS 64x23")
+            self.assertIn("ANSI 64x23", r[23])
+            self.assertIn("F9 MENU", r[23])
+            self.assertEqual(r[4][:4], "\u00b7" * 4)                   # CP437 box corner, lines
+            m.type("Hello\r")
+            wait64(m, "Hello")
+            m.type("ANSI\r")
+            wait64(m, "ANSI DONE")
+            r = rows64(m)
+            self.assertEqual(r[0], "ANSI TEST")
+            self.assertEqual(r[4][9:11], "XX")
+            self.assertEqual(r[9], "LINEA")
+            self.assertEqual(r[13][:11], "CPR ^[12;3R")
+            self.assertEqual(r[19][19], "Z")
+            self.assertEqual(r[13][11], "U")
+            m.type("BIG\r")                                            # scrolling
+            wait64(m, "END", 6000)
+            self.assertIn("ANSI 64x23", rows64(m)[23])
+            m.press("FCTN", "9")
+            wait64(m, "H=HANG UP")
+            m.type("H")
+            wait_for(m, "ADDRESS BOOK")
+            self.assertEqual(m.vregs()[1] & 0x18, 0x10)                 # text mode again
+        with open(os.path.join(self.rig.sd, "DISKS", "_APEDSK1.DSK"), "rb") as f:
+            self.assertIn(b"#P0S1E0N0C1", f.read())
 
     def test_bulk(self):
         with self.machine() as m:

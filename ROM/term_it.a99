@@ -1,0 +1,9 @@
+* term_it.a99 - TI-NET TERM: the terminal's texts in Italian (assembled with -D ITALIAN)
+HANGK  EQU  'H'                       * the key that hangs up in the session menu
+MCLOSD TEXT ' Chiusa dalla BBS. Un tasto per uscire.'
+       BYTE 0
+MBAD   TEXT ' Risposta non valida dal firmware.'
+       BYTE 0
+MMENU  TEXT ' H=RIAGGANCIA  ALTRO TASTO=CONTINUA'
+       BYTE 0
+       EVEN

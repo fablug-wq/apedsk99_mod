@@ -7,7 +7,7 @@ A modification of [APEDSK99](https://github.com/jambuur/APEDSK99) by Jochen Buur
 | Part | Status |
 |---|---|
 | Firmware commands >70–>73 (CONNECT, SEND, RECV, CLOSE) | done, tested in the PC harness and in the co-simulation; not yet tested on real hardware |
-| TI-NET TERM 0.2 (`ROM/TINETC.bin` English, `ROM/TINETITC.bin` Italian; 8K cartridge, needs 32K) | 40 columns, telnet, ANSI, CP437, address book on `DSK1.BBSLIST`, local echo and CR LF for plain services; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
+| TI-NET TERM 0.3 (`ROM/TINET8.bin` English, `ROM/TINETI8.bin` Italian; 16K bank-switched cartridge, needs 32K; 0.2 for 8K loaders in `ROM/v0.2`) | 40 or 64 columns (64 in bitmap mode on the plain VDP, Tasword 3 font), telnet, ANSI, CP437, address book on `DSK1.BBSLIST`, local echo and CR LF for plain services; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
 | DSRs | unchanged: the commands work with both `APEDSK99.DSR` and `APEDSKPR.DSR` |
 
 The firmware is compatible with the existing DSRs, and printing, `FGET`, `FPUT` and `TIME` keep working, also during a telnet session. It adds about 390 bytes of flash (about 440 left on the Uno). Details: [Network terminal commands](#network-terminal-commands-work-in-progress) below.
@@ -33,7 +33,7 @@ The branch keeps everything from `main`: a second DSR, **APEDSKPR**, that emulat
 | `docs/BBS-terminal.md` | design notes for the network terminal (firmware and terminal program) |
 | `docs/terminal-mockup.html` | the early mockups of the terminal screens |
 | `docs/screenshots/` | TI-NET TERM in the emulator |
-| `ROM/` | TI-NET TERM: source (`tinet.a99`), font generator, build script, tests, the ROM (`TINETC.bin`) |
+| `ROM/` | TI-NET TERM: source (`tinet.a99`, `menu.a99`, `term.a99`), font generators, build script, tests, the ROMs (`TINET8.bin`, `TINETI8.bin`; 0.2 in `v0.2/`) |
 | `harness/cosim/` | co-simulation: the real firmware as the APEDSK99 card of an emulated TI |
 
 The first commit holds the original files unchanged, so a `git diff` against it shows exactly what was modified.
@@ -128,15 +128,17 @@ Four firmware commands let a TI program open a TCP connection, for example to a 
 
 ## TI-NET TERM
 
-Load `ROM/TINETC.bin` (English) or `ROM/TINETITC.bin` (Italian) as an 8K cartridge (non-banked, >6000) on a loader that takes one (FinalGROM99, a flash cartridge, an emulator). With the 32K expansion and the firmware of this branch it appears as TI-NET TERM in the menu. Usage, keys and the `DSK1.BBSLIST` format: `docs/BBS-terminal.md`.
+Load `ROM/TINET8.bin` (English) or `ROM/TINETI8.bin` (Italian) as a 16K bank-switched cartridge (non-inverted, file name ending in 8) on a loader that takes one (FinalGROM99, a flash cartridge, an emulator); for 8K-only loaders, `ROM/v0.2/TINETC.bin` or `TINETITC.bin`. With the 32K expansion and the firmware of this branch it appears as TI-NET TERM in the menu. Usage, keys and the `DSK1.BBSLIST` format: `docs/BBS-terminal.md`.
 
 ## Building
 
 - **DSR:** `xas99.py -R -b TI/APEDSKPR.a99 -o APEDSKPR.bin` ([xdt99](https://github.com/endlos99/xdt99)), then pad with zeros to 8192 bytes. Assembled the same way, the original source is byte-identical to `APEDSK99.DSR`. The DSR currently uses all but 134 bytes of its space.
 - **Sketch:** Arduino IDE, board Uno. It uses about 98.5% of flash.
-- **TI-NET TERM:** `ROM/build.sh` (xdt99's `xas99.py`; `XDT99` = its folder): font, assembly of both languages, padding to 8K.
+- **TI-NET TERM:** `ROM/build.sh` (xdt99's `xas99.py`; `XDT99` = its folder): fonts, assembly of both languages (two banks each), padding and joining into 16K.
 - **PC harness:** `harness/run.sh` compiles the sketch with g++ against mock hardware (DSR RAM, SD card folder, Ethernet on host sockets, FTP folder, fixed NTP time) and tests the terminal commands against `harness/fake_bbs.py`, a fake telnet BBS. The hardware itself (timing, SPI, the W5100) is not simulated.
 
 ## Credits
 
 APEDSK99 is the work of Jochen Buur ([github.com/jambuur/APEDSK99](https://github.com/jambuur/APEDSK99)), released as freeware without restrictions. The disk controller code is based on Thierry Nouspikel's commented disassembly.
+
+The 64-column font of TI-NET TERM (`ROM/font64.py`, `ROM/tasword.py`) is derived from Tasword 3 by Damien Guard ([damieng.com/typography/zx-origins](https://damieng.com/typography/zx-origins/)), licensed [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); the derived font is under the same licence.

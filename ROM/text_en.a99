@@ -1,8 +1,7 @@
-* text_en.a99 - TI-NET TERM texts in English (the default)
-HANGK  EQU  'H'                       * the key that hangs up in the session menu
-MTITLE TEXT ' TI-NET TERM 0.2'
+* text_en.a99 - TI-NET TERM: address book and options texts in English (the default)
+MTITLE TEXT ' TI-NET TERM 0.3'
        BYTE 0
-MTITLO TEXT ' TI-NET TERM 0.2 '
+MTITLO TEXT ' TI-NET TERM 0.3 '
        BYTE >FA
        TEXT ' OPTIONS'
        BYTE 0
@@ -14,7 +13,7 @@ MKEYS1 TEXT 'FCTN-E/X CHOOSE  ENTER CALL  F8 SAVE'
        BYTE 0
 MKEYS2 TEXT 'F3 DELETE  F9 OPTIONS  F= QUIT'
        BYTE 0
-MKEYS3 TEXT '1-4 CHANGE  F9 BACK TO ADDRESS BOOK'
+MKEYS3 TEXT '1-5 CHANGE  F9 BACK TO ADDRESS BOOK'
        BYTE 0
 MKEYS4 TEXT 'ANY KEY TO GO BACK TO THE MENU'
        BYTE 0
@@ -26,9 +25,9 @@ MOPT6  TEXT '3  Local echo ........'
        BYTE 0
 MOPT7  TEXT '4  ENTER sends .......'
        BYTE 0
-MOPT3  TEXT '   Columns ........... 40'
+MOPT8  TEXT '5  Columns ...........'
        BYTE 0
-MOPT4  TEXT '(80 with the F18A: next version)'
+MOPT4  TEXT '(80 columns: with the F18A, later)'
        BYTE 0
 MOPT5  TEXT 'APEDSK99 firmware: terminal OK'
        BYTE 0
@@ -61,17 +60,6 @@ MDELQ  TEXT 'Delete which entry (1-9)?'
        BYTE 0
 MDELD  TEXT 'Entry deleted.'
        BYTE 0
-MCLOSD TEXT ' Closed by the BBS. Any key to leave.'
-       BYTE 0
-MBAD   TEXT ' Bad answer from the firmware.'
-       BYTE 0
-MMENU  TEXT ' H=HANG UP  ANY OTHER KEY=CONTINUE'
-       BYTE 0
-MANSI  TEXT 'ANSI 40x'
-MROWS  TEXT '23'
-       BYTE 0
-MF9    TEXT 'F9 MENU'
-       BYTE 0
 MYES   TEXT 'YES           '
        BYTE 0
 MNO    TEXT 'NO            '
@@ -82,10 +70,15 @@ MCR    TEXT 'CR            '
        BYTE 0
 MCRLF  TEXT 'CR LF         '
        BYTE 0
+MC40   TEXT '40            '
+       BYTE 0
+MC64   TEXT '64            '
+       BYTE 0
        EVEN
 YNNAM  DATA MNO,MYES
 ECHNAM DATA MAUTO,MYES,MNO
 CRNAM  DATA MCR,MCRLF
+COLNAM DATA MC40,MC64
 PALNAM DATA PNM0,PNM1,PNM2
 PNM0   TEXT 'WHITE ON BLUE '
        BYTE 0

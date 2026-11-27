@@ -1,8 +1,7 @@
-* text_it.a99 - TI-NET TERM texts in Italian (assembled with -D ITALIAN)
-HANGK  EQU  'H'                       * the key that hangs up in the session menu
-MTITLE TEXT ' TI-NET TERM 0.2'
+* text_it.a99 - TI-NET TERM: address book and options texts in Italian (assembled with -D ITALIAN)
+MTITLE TEXT ' TI-NET TERM 0.3'
        BYTE 0
-MTITLO TEXT ' TI-NET TERM 0.2 '
+MTITLO TEXT ' TI-NET TERM 0.3 '
        BYTE >FA
        TEXT ' OPZIONI'
        BYTE 0
@@ -14,7 +13,7 @@ MKEYS1 TEXT 'FCTN-E/X SCEGLI  ENTER CHIAMA  F8 SALVA'
        BYTE 0
 MKEYS2 TEXT 'F3 CANCELLA  F9 OPZIONI  F= ESCI'
        BYTE 0
-MKEYS3 TEXT '1-4 CAMBIA  F9 TORNA ALLA RUBRICA'
+MKEYS3 TEXT '1-5 CAMBIA  F9 TORNA ALLA RUBRICA'
        BYTE 0
 MKEYS4 TEXT 'UN TASTO PER TORNARE AL MENU'
        BYTE 0
@@ -26,9 +25,9 @@ MOPT6  TEXT '3  Eco locale ........'
        BYTE 0
 MOPT7  TEXT '4  ENTER manda .......'
        BYTE 0
-MOPT3  TEXT '   Colonne ........... 40'
+MOPT8  TEXT '5  Colonne ...........'
        BYTE 0
-MOPT4  TEXT '(80 con F18A: prossima versione)'
+MOPT4  TEXT '(80 colonne: con F18A, in futuro)'
        BYTE 0
 MOPT5  TEXT 'Firmware APEDSK99: terminale OK'
        BYTE 0
@@ -61,17 +60,6 @@ MDELQ  TEXT 'Cancello quale voce (1-9)?'
        BYTE 0
 MDELD  TEXT 'Voce cancellata.'
        BYTE 0
-MCLOSD TEXT ' Chiusa dalla BBS. Un tasto per uscire.'
-       BYTE 0
-MBAD   TEXT ' Risposta non valida dal firmware.'
-       BYTE 0
-MMENU  TEXT ' H=RIAGGANCIA  ALTRO TASTO=CONTINUA'
-       BYTE 0
-MANSI  TEXT 'ANSI 40x'
-MROWS  TEXT '23'
-       BYTE 0
-MF9    TEXT 'F9 MENU'
-       BYTE 0
 MYES   TEXT 'SI            '
        BYTE 0
 MNO    TEXT 'NO            '
@@ -82,10 +70,15 @@ MCR    TEXT 'CR            '
        BYTE 0
 MCRLF  TEXT 'CR LF         '
        BYTE 0
+MC40   TEXT '40            '
+       BYTE 0
+MC64   TEXT '64            '
+       BYTE 0
        EVEN
 YNNAM  DATA MNO,MYES
 ECHNAM DATA MAUTO,MYES,MNO
 CRNAM  DATA MCR,MCRLF
+COLNAM DATA MC40,MC64
 PALNAM DATA PNM0,PNM1,PNM2
 PNM0   TEXT 'BIANCO SU BLU '
        BYTE 0

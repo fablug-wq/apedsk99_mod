@@ -3,7 +3,7 @@
 Status, 27 November 2026:
 
 - **firmware:** done, tested in the PC harness and in the co-simulation (below);
-- **TI-NET TERM 0.2**, the terminal cartridge (`ROM/`): written in assembly, 40 columns, tested on the emulated console against the real firmware and DSR;
+- **TI-NET TERM 0.3**, the terminal cartridge (`ROM/`): written in assembly, 40 or 64 columns, tested on the emulated console against the real firmware and DSR;
 - **real hardware:** not tested yet.
 
 Screenshots from the emulator: `docs/screenshots/`. The early mockups: `docs/terminal-mockup.html`.
@@ -44,12 +44,16 @@ Facts that matter for the program:
 - Status codes are written to `CALLST` directly: `CALLstatus()` with an error code would overwrite `CALLBF` with the error text.
 - Cost: about +390 bytes of flash (about 440 left), no static RAM; 32 bytes of stack during the command.
 
-## The terminal program: TI-NET TERM 0.2
+## The terminal program: TI-NET TERM 0.3
 
-An 8K cartridge ROM, in two languages from the same source (`ROM/tinet.a99`, texts in `ROM/text_en.a99` and `ROM/text_it.a99`, font `ROM/font.py`):
+A 16K bank-switched cartridge ROM (two 8K banks, non-inverted: a write to >6000 selects bank 0, to >6002 bank 1), in two languages from the same source:
 
-- `ROM/TINETC.bin`: English;
-- `ROM/TINETITC.bin`: Italian.
+- `ROM/TINET8.bin`: English;
+- `ROM/TINETI8.bin`: Italian.
+
+Loaders that take only 8K cartridges can use 0.2 (`ROM/v0.2/TINETC.bin`, `ROM/v0.2/TINETITC.bin`): 40 columns, no Columns option.
+
+Sources: `ROM/tinet.a99` (equates, variables and the code both banks share: header, start, network calls, keyboard, VDP), `ROM/menu.a99` (bank 0: address book, options, file, firmware check), `ROM/term.a99` (bank 1: telnet, ANSI, screen); texts in `ROM/text_*.a99` and `ROM/term_*.a99`; fonts from `ROM/font.py` (40 columns) and `ROM/font64.py` (64 columns).
 
 It needs the 32K memory expansion and the firmware of this branch, and works with either APEDSK99 DSR. The screens below are named as in the English ROM.
 
@@ -78,7 +82,7 @@ Keys in a session:
 
 ROM is read-only and RAM is lost at power-off, so the address book and the options are kept **in a file on disk**, read and written through the normal DSR file calls (the ROM has its own DSRLNK). This costs no Arduino flash and works with both DSRs.
 
-`DSK1.BBSLIST` is DIS/VAR 80: first the options, `#P<palette>S<status row>E<echo>N<ENTER>` (e.g. `#P0S1E0N0`; a missing letter keeps its default, so 0.1 files still load), then one record per entry, `name|host[:port]`, at most 9. It can be made on a PC too (a text file put on the disk image with xdm99). Without the file the address book starts empty; the first save creates it.
+`DSK1.BBSLIST` is DIS/VAR 80: first the options, `#P<palette>S<status row>E<echo>N<ENTER>C<columns>` (e.g. `#P0S1E0N0C1`; a missing letter keeps its default, so older files still load), then one record per entry, `name|host[:port]`, at most 9. It can be made on a PC too (a text file put on the disk image with xdm99). Without the file the address book starts empty; the first save creates it.
 
 Options (FCTN-9 in the address book; saved when you leave the screen):
 
@@ -86,7 +90,7 @@ Options (FCTN-9 in the address book; saved when you leave the screen):
 - status row: on (the BBS gets 23 rows) or off (24 rows);
 - local echo: AUTO (default: on while the server has not said WILL ECHO, so off with BBSes, on with plain services), on, off;
 - ENTER sends: CR (default, what BBSes expect) or CR LF (what POP3, SMTP and most line-based services want);
-- 40 columns only in this version; 80 columns with the F18A are planned.
+- columns: 40 (text mode) or 64 (bitmap mode, see Screen); 80 columns with the F18A are planned.
 
 ### Telnet
 
@@ -100,23 +104,26 @@ As implemented in `TNBYTE` (the `Telnet` struct in `harness/test_terminal.cpp` i
 
 ### Screen
 
-- 40 columns, TMS9918 text mode. Characters 32–95 come from the console GROM (>06B4), 96–255 from the ROM: true lower case, CP437 accented letters, box drawing (single, double, mixed), blocks, shades, some symbols.
-- **Status row** (row 24, optional): the host, `ANSI 40x23`, the connection time, `F9 MENU`. With it the BBS gets 23 rows (NAWS 40×23).
+- **40 columns**: TMS9918 text mode. Characters 32–95 come from the console GROM (>06B4), 96–255 from the ROM: true lower case, CP437 accented letters, box drawing (single, double, mixed), blocks, shades, some symbols.
+- **64 columns**: TMS9918 bitmap mode (graphics II), 4×8-pixel cells, two per 8×8 pattern, on the plain VDP. Font: [Tasword 3](https://damieng.com/typography/zx-origins/tasword/) by Damien Guard, licensed CC BY-SA 3.0, from its ZX Spectrum 64-column original; accented letters, `` ` ``, `^` and box drawing added in `ROM/font64.py`. The colour table is 2K shared by the three thirds of the screen (R3 = >9F), so the disk buffers at the top of VDP RAM stay untouched. Two colours, as in 40 columns. Writing a character is a read-modify-write of 8 bytes, so this mode is slower (see Speed).
+- **Status row** (row 24, optional): the host, `ANSI 40x23` or `ANSI 64x23`, the connection time, `F9 MENU`. With it the BBS gets 23 rows (NAWS 40×23 or 64×23).
 - ANSI: cursor `A B C D G d`, `H`/`f`, `s`/`u` and `ESC 7`/`ESC 8`; erase `J` (0, 1, 2) and `K` (0, 1, 2); `ESC[6n` answered with `ESC[row;colR`; `ESC c` clears. SGR (`m`) and private sequences (`ESC[?…`) are read and ignored: text mode has one colour pair for the whole screen. Line wrap is deferred to the next character, as on a VT100.
 - The cursor is a block drawn while no data arrives.
 - ANSI BBSes expect 25 rows; the TI has 24.
 - Planned: 80 columns and colours with the F18A; inverse video.
 
-KSCAN restores VDP register 1 from >83D4 at every key (to undo the screen saver): the ROM puts its own value (text mode) there, or the first key would switch the screen back to graphics mode.
+KSCAN restores VDP register 1 from >83D4 at every key (to undo the screen saver): the ROM puts its own value (text or bitmap mode) there, or the first key would switch the screen back to graphics mode.
 
 ### Speed
 
 Measured in the emulator: about 46,000 CPU cycles for a packet of 31 bytes (about 1,500 a byte, more when the screen scrolls), so about 2 KB a second at 3 MHz, twice 9600 baud, before the time the Arduino takes for each RECV (estimated 1–1.5 ms). KSCAN costs about 2,500 cycles and runs once a loop.
 
+In 64 columns: about 125,000 cycles for a packet of 31 bytes (about 4,000 a byte), so about 750 bytes a second; a scroll copies 23 × 256 bytes through CPU RAM and adds about 390,000 cycles (0.13 s).
+
 ## Testing
 
 - `harness/cosim/`: **co-simulation**. The real sketch runs as a process (`firmware_server`) and is the firmware of an APEDSK99 card in an emulated TI-99/4A ([ti99-headless](https://github.com/fablug-wq/ti99-headless) 0.2.0 or later: js99er with the real console ROM and GROM). Every word the TI writes into >4000–>5FFF runs `loop()` once, as the GAL signals on the hardware (A15 = 0: once per word), and the TI waits meanwhile. So the real DSR (disks, CALLs) and the terminal commands run as on the machine, with the SD card and FTP server as folders and the network through the host. `test_cosim.py`: TI BASIC SAVE/OLD; `NETTEST` in Extended BASIC against the fake BBS.
-- `ROM/test_rom.py`: TI-NET TERM in the co-simulation, 11 tests (the Italian ROM in one of them): the address book screen; a session (negotiation, ANSI and CP437 on screen, the ANSI test page with `ESC[6n`, the codes the keys send, FCTN-9 R); 5000 bytes; the BBS hanging up; a refused connection; local echo AUTO with a BBS that stops and restarts echoing; a plain TCP service (the fake BBS in raw mode) with ENTER = CR LF and echo AUTO, then off; saving, reading back, choosing and deleting entries in `DSK1.BBSLIST`; the options (palette, status row → NAWS 40×24, kept on disk); the firmware of `main` (the ROM says it lacks the commands). `ROM/screenshots.py` makes `docs/screenshots/`.
+- `ROM/test_rom.py`: TI-NET TERM in the co-simulation, 12 tests (the Italian ROM in one of them): the address book screen; a session (negotiation, ANSI and CP437 on screen, the ANSI test page with `ESC[6n`, the codes the keys send, FCTN-9 R); 5000 bytes; the BBS hanging up; a refused connection; local echo AUTO with a BBS that stops and restarts echoing; a plain TCP service (the fake BBS in raw mode) with ENTER = CR LF and echo AUTO, then off; saving, reading back, choosing and deleting entries in `DSK1.BBSLIST`; the options (palette, status row → NAWS 40×24, kept on disk); 64 columns (bitmap registers, NAWS 64×23, the ANSI page read back from the bitmap, scrolling, back to text mode, `C1` on disk); the firmware of `main` (the ROM says it lacks the commands). `ROM/screenshots.py` makes `docs/screenshots/`.
 
   ```
   TI99HEADLESS=/path/to/ti99-headless XDT99=/path/to/xdt99 python3 ROM/test_rom.py -v

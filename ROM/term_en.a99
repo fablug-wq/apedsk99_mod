@@ -1,0 +1,9 @@
+* term_en.a99 - TI-NET TERM: the terminal's texts in English (the default)
+HANGK  EQU  'H'                       * the key that hangs up in the session menu
+MCLOSD TEXT ' Closed by the BBS. Any key to leave.'
+       BYTE 0
+MBAD   TEXT ' Bad answer from the firmware.'
+       BYTE 0
+MMENU  TEXT ' H=HANG UP  ANY OTHER KEY=CONTINUE'
+       BYTE 0
+       EVEN
