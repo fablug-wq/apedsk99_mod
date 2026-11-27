@@ -31,15 +31,28 @@ unsigned int DSRreset;
 uint8_t dsram[0x2000];
 unsigned long dsram_reads, dsram_writes;
 byte read_DSRAM(unsigned int a) { dsram_reads++; return dsram[(a - 0x4000) & 0x1FFF]; }
-void write_DSRAM(unsigned int a, byte d) { dsram_writes++; dsram[(a - 0x4000) & 0x1FFF] = d; }
+void (*dsram_hook)(unsigned) = nullptr;            // co-simulation: which bytes the firmware wrote
+void (*reset_hook)() = nullptr;                     // co-simulation: what a reset does
+void write_DSRAM(unsigned int a, byte d) {
+  dsram_writes++; dsram[(a - 0x4000) & 0x1FFF] = d;
+  if (dsram_hook) dsram_hook((a - 0x4000) & 0x1FFF);
+}
 void TIstop() {}
 void TIgo() {}
 void NOP() {}
 void IAQ() {}
-void APEDSK99reset() { printf("APEDSK99reset()\n"); exit(2); }
+void APEDSK99reset() { if (reset_hook) reset_hook(); printf("APEDSK99reset()\n"); exit(2); }
 void Flasher(byte e) { printf("Flasher(%d)\n", e); exit(3); }
 
 EEPROMClass EEPROM;
+// EEPROM_FILE: the EEPROM kept in a file (it survives a reset of the co-simulation)
+EEPROMClass::EEPROMClass() {
+  memset(mem, 0xFF, sizeof mem);
+  if (getenv("EEPROM_FILE")) { FILE *f = fopen(getenv("EEPROM_FILE"), "rb"); if (f) { fread(mem, 1, sizeof mem, f); fclose(f); } }
+}
+void EEPROMClass::save() {
+  if (getenv("EEPROM_FILE")) { FILE *f = fopen(getenv("EEPROM_FILE"), "wb"); if (f) { fwrite(mem, 1, sizeof mem, f); fclose(f); } }
+}
 
 // ---------------------------------------------------------------- SD
 std::string sdpath(const char *p) {

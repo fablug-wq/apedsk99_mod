@@ -26,7 +26,9 @@ def handle(conn):
     ttype, naws, opts, data = None, None, [], b''
     buf = b''
     deadline = time.time() + 3
-    while time.time() < deadline and (ttype is None or naws is None):
+    def answered(opt, value):                       # WONT, or WILL and then the value
+        return value is not None or (WONT, opt) in opts
+    while time.time() < deadline and not (answered(TTYPE, ttype) and answered(NAWS, naws)):
         try:
             chunk = conn.recv(256)
         except socket.timeout:
