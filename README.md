@@ -13,7 +13,10 @@ It adds a second DSR, **APEDSKPR**, that emulates a printer on `PIO` and `RS232`
 | `SD/CALLHLPP.TXT` | help screen for the new DSR (`CALL AHLP`) |
 | `TI/APEDSK99.a99` | source of the original DSR |
 | `TI/APEDSKPR.a99` | source of the new DSR |
-| `Arduino/APEDSK99_012s/` | Arduino sketch with the printer commands added |
+| `Arduino/APEDSK99_012s/` | Arduino sketch with the printer and network terminal commands added |
+| `harness/` | PC test harness: the sketch on mock hardware, a fake telnet BBS, flash measurement |
+| `docs/BBS-terminal.md` | design notes for the network terminal (firmware and terminal program) |
+| `docs/terminal-mockup.html` | mockups of the terminal screens |
 
 The first commit holds the original files unchanged, so a `git diff` against it shows exactly what was modified.
 
@@ -92,7 +95,7 @@ Arduino errors are passed back through `CALLST` and become error 6 in the PAB. U
 
 ## Network terminal commands (work in progress)
 
-Four firmware commands let a TI program open a TCP connection, for example to a telnet BBS. They need no DSR support: the program writes `CALLBF` and `ACOMND` directly, so they work with either DSR. Bytes are raw (no TI BASIC screen bias). The firmware is only a pipe: telnet negotiation and the screen are up to the TI program.
+Four firmware commands let a TI program open a TCP connection, for example to a telnet BBS. Design notes and the plan for the terminal program: `docs/BBS-terminal.md`. They need no DSR support: the program writes `CALLBF` and `ACOMND` directly, so they work with either DSR. Bytes are raw (no TI BASIC screen bias). The firmware is only a pipe: telnet negotiation and the screen are up to the TI program.
 
 | Code | Command | TI → `CALLBF` | Result |
 |---|---|---|---|

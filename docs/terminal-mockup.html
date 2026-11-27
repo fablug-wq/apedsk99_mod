@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>TI-NET TERM – mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#E9E7E2}main{display:flex;flex-wrap:wrap;gap:0}</style>
+</head>
+<body>
+<main>
+<div style="width: 920px; height: 900px; box-sizing: border-box; padding: 40px 36px; background: #E9E7E2; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; color: #1A1A1A">1 · Rubrica e connessione</h1>
+<p style="margin: 0; font-size: 15px; color: #4A4A4A">TMS9918, modo testo 40 colonne. Indirizzo libero o voce della rubrica, poi lo stato della connessione.</p>
+</div>
+<div style="background: #1C1C1E; border-radius: 18px; padding: 24px; align-self: flex-start">
+<div style="width: 800px; height: 656px; box-sizing: border-box; padding: 40px; background: #5455ED; overflow: hidden">
+<pre aria-label="Schermo del TI-99/4A" style="margin: 0; width: 720px; height: 720px; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 30px; line-height: 30px; letter-spacing: 0; color: #FFFFFF; transform: scale(1, 0.8); transform-origin: 0 0; white-space: pre"> TI-NET TERM 1.0          APEDSK99 v12s 
+────────────────────────────────────────
+ RUBRICA                                
+                                        
+  1  LA CANTINA BBS                     
+     cantina.example.org:23             
+  2  RETROPOINT                         
+     retro.example.net:2323             
+  3  TI USERS BOARD                     
+     tiboard.example.com                
+  4  (vuoto)                            
+  5  (vuoto)                            
+                                        
+ OPPURE SCRIVI HOST[:PORTA]             
+ &gt;cantina.example.org:23█               
+                                        
+ Connessione a cantina.example.org...   
+ Connesso. Negoziazione telnet:         
+   ECHO SGA TTYPE=ANSI NAWS=40x23       
+                                        
+                                        
+                                        
+────────────────────────────────────────
+ 1-5 SCEGLI  ENTER CHIAMA  FCTN-9 OPZ.  </pre>
+</div>
+</div>
+</div>
+<div style="width: 920px; height: 900px; box-sizing: border-box; padding: 40px 36px; background: #E9E7E2; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; color: #1A1A1A">2 · Opzioni</h1>
+<p style="margin: 0; font-size: 15px; color: #4A4A4A">Senza F18A le 80 colonne non si possono scegliere. Il firmware viene riconosciuto con la sentinella >FE.</p>
+</div>
+<div style="background: #1C1C1E; border-radius: 18px; padding: 24px; align-self: flex-start">
+<div style="width: 800px; height: 656px; box-sizing: border-box; padding: 40px; background: #5455ED; overflow: hidden">
+<pre aria-label="Schermo del TI-99/4A" style="margin: 0; width: 720px; height: 720px; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 30px; line-height: 30px; letter-spacing: 0; color: #FFFFFF; transform: scale(1, 0.8); transform-origin: 0 0; white-space: pre"> TI-NET TERM 1.0 · OPZIONI              
+────────────────────────────────────────
+                                        
+ Colonne ............ [40]  80          
+ F18A ............... non trovato       
+ Righe .............. 23 + stato        
+ Emulazione ......... ANSI              
+ Colori ANSI ........ ignorati          
+ Palette ............ BIANCO SU BLU     
+ Riga di stato ...... SI                
+ Eco locale ......... AUTO              
+ ENTER manda ........ CR                
+ BACK manda ......... BS (&gt;08)          
+                                        
+ Firmware APEDSK99 .. terminale OK      
+ IP ................. 192.168.1.99      
+                                        
+ Le impostazioni restano in memoria     
+ fino allo spegnimento.                 
+                                        
+                                        
+                                        
+────────────────────────────────────────
+ ↑↓ SCEGLI  ENTER CAMBIA  FCTN-9 ESCI   </pre>
+</div>
+</div>
+</div>
+<div style="width: 920px; height: 900px; box-sizing: border-box; padding: 40px 36px; background: #E9E7E2; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; color: #1A1A1A">3 · Menu della BBS su TMS9918</h1>
+<p style="margin: 0; font-size: 15px; color: #4A4A4A">40 colonne, un solo colore per tutto lo schermo: le sequenze ANSI di colore vengono lette e scartate. Cornici dai caratteri CP437.</p>
+</div>
+<div style="background: #1C1C1E; border-radius: 18px; padding: 24px; align-self: flex-start">
+<div style="width: 800px; height: 656px; box-sizing: border-box; padding: 40px; background: #5455ED; overflow: hidden">
+<pre aria-label="Schermo del TI-99/4A" style="margin: 0; width: 720px; height: 720px; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 30px; line-height: 30px; letter-spacing: 0; color: #FFFFFF; transform: scale(1, 0.8); transform-origin: 0 0; white-space: pre">╔══════════════════════════════════════╗
+║       LA CANTINA BBS · NODO 2        ║
+╚══════════════════════════════════════╝
+ Ciao FABRIZIO! Chiamata n. 214         
+ Ultima visita: 25/11/2026 21:40        
+                                        
+ Nuovi messaggi ........... 3           
+ Nuovi file ............... 12          
+ Utenti collegati ......... 4           
+                                        
+┌─ MENU PRINCIPALE ────────────────────┐
+│ [M] Messaggi      [F] Area file      │
+│ [C] Chat          [G] Giochi         │
+│ [W] Chi c&#x27;è       [B] Bollettini     │
+│ [U] Profilo       [Q] Esci           │
+└──────────────────────────────────────┘
+                                        
+ Tempo rimasto: 58 min                  
+                                        
+ Comando: █                             
+                                        
+                                        
+                                        
+▐ CANTINA  40x23 ANSI  00:02  F9 MENU   </pre>
+</div>
+</div>
+</div>
+<div style="width: 920px; height: 900px; box-sizing: border-box; padding: 40px 36px; background: #E9E7E2; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; color: #1A1A1A">4 · La stessa BBS con l’F18A</h1>
+<p style="margin: 0; font-size: 15px; color: #4A4A4A">80 colonne con colore per ogni carattere: le sequenze ANSI di colore vengono applicate.</p>
+</div>
+<div style="background: #1C1C1E; border-radius: 18px; padding: 24px; align-self: flex-start">
+<div style="width: 800px; height: 656px; box-sizing: border-box; padding: 40px; background: #000000; overflow: hidden">
+<pre aria-label="Schermo del TI-99/4A" style="margin: 0; width: 720px; height: 360px; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 15px; line-height: 15px; letter-spacing: 0; color: #AAAAAA; transform: scale(1, 1.6); transform-origin: 0 0; white-space: pre"><span style="color: #5555FF">╔══════════════════════════════════════════════════════════════════════════════╗</span>
+<span style="color: #5555FF">║</span><span style="color: #FFFF55">  LA CANTINA BBS                        </span><span style="color: #55FFFF">nodo 2 di 4 · dal 1991 · Bologna      </span><span style="color: #5555FF">║</span>
+<span style="color: #5555FF">╚══════════════════════════════════════════════════════════════════════════════╝</span>
+<span style="color: #AAAAAA"> Ciao </span><span style="color: #FFFFFF">FABRIZIO</span><span style="color: #AAAAAA">! Chiamata n. </span><span style="color: #FFFF55">214</span><span style="color: #AAAAAA"> · ultima visita 25/11/2026 21:40</span><span style="color: #AAAAAA">                </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #00AA00"> ┌─ MENU PRINCIPALE ──────────────────┐</span><span style="color: #AAAAAA">  </span><span style="color: #00AA00">┌─ ULTIMI MESSAGGI ───────────────────┐</span>
+<span style="color: #00AA00"> │ </span><span style="color: #555555">[</span><span style="color: #FFFF55">M</span><span style="color: #555555">] </span><span style="color: #55FFFF">Messaggi     </span><span style="color: #555555">[</span><span style="color: #FFFF55">F</span><span style="color: #555555">] </span><span style="color: #55FFFF">Area file    </span><span style="color: #00AA00"> │</span><span style="color: #AAAAAA">  </span><span style="color: #00AA00">│ </span><span style="color: #FFFFFF">Rif: TIPI e APEDSK99    </span><span style="color: #FF55FF">BRUNO       </span><span style="color: #00AA00">│</span>
+<span style="color: #00AA00"> │ </span><span style="color: #555555">[</span><span style="color: #FFFF55">C</span><span style="color: #555555">] </span><span style="color: #55FFFF">Chat         </span><span style="color: #555555">[</span><span style="color: #FFFF55">G</span><span style="color: #555555">] </span><span style="color: #55FFFF">Giochi       </span><span style="color: #00AA00"> │</span><span style="color: #AAAAAA">  </span><span style="color: #00AA00">│ </span><span style="color: #FFFFFF">Mostra a Modena        </span><span style="color: #FF55FF"> ELENA       </span><span style="color: #00AA00">│</span>
+<span style="color: #00AA00"> │ </span><span style="color: #555555">[</span><span style="color: #FFFF55">W</span><span style="color: #555555">] </span><span style="color: #55FFFF">Chi c&#x27;è      </span><span style="color: #555555">[</span><span style="color: #FFFF55">B</span><span style="color: #555555">] </span><span style="color: #55FFFF">Bollettini   </span><span style="color: #00AA00"> │</span><span style="color: #AAAAAA">  </span><span style="color: #00AA00">│ </span><span style="color: #FFFFFF">Cerco cartuccia XB      </span><span style="color: #FF55FF">ROB64       </span><span style="color: #00AA00">│</span>
+<span style="color: #00AA00"> │ </span><span style="color: #555555">[</span><span style="color: #FFFF55">U</span><span style="color: #555555">] </span><span style="color: #55FFFF">Profilo      </span><span style="color: #555555">[</span><span style="color: #FFFF55">Q</span><span style="color: #555555">] </span><span style="color: #55FFFF">Esci         </span><span style="color: #00AA00"> │</span><span style="color: #AAAAAA">  </span><span style="color: #00AA00">└─────────────────────────────────────┘</span>
+<span style="color: #00AA00"> └────────────────────────────────────┘</span><span style="color: #AAAAAA">                                         </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #AAAAAA"> Nuovi messaggi </span><span style="color: #FFFF55">3</span><span style="color: #AAAAAA">   Nuovi file </span><span style="color: #FFFF55">12</span><span style="color: #AAAAAA">   Utenti collegati </span><span style="color: #FFFF55">4</span><span style="color: #AAAAAA">   Tempo rimasto </span><span style="color: #55FF55">58 min</span><span style="color: #AAAAAA">   </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #0000AA"> ░▒▓</span><span style="color: #FFFFFF; background: #0000AA"> Il file del mese: </span><span style="color: #FFFF55; background: #0000AA">HOBBIT.DSK</span><span style="color: #FFFFFF; background: #0000AA"> - avventura testuale per TI-99/4A </span><span style="color: #0000AA">▓▒░</span><span style="color: #AAAAAA">         </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #55FFFF"> Comando: </span><span style="color: #FFFFFF">█</span><span style="color: #AAAAAA">                                                                     </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #AAAAAA">                                                                                </span>
+<span style="color: #000000; background: #00AAAA"> CANTINA   80x23 ANSI   F18A   00:02:14                       </span><span style="color: #000000; background: #00AAAA">FCTN-9 MENU       </span></pre>
+</div>
+</div>
+</div>
+</main>
+</body>
+</html>
