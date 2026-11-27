@@ -66,6 +66,18 @@ def wait_for(m, text, max_frames=900, step=10):
     raise AssertionError("%r not on the screen: %s" % (text, [r for r in rows(m) if r]))
 
 
+def to_book(m):
+    """FCTN-9 from the options: wait for the address book itself (the options
+    footer also says ADDRESS BOOK)"""
+    m.press("FCTN", "9")
+    wait_for(m, "OR TYPE HOST")
+
+
+def disk1(rig):
+    with open(os.path.join(rig.sd, "DISKS", "_APEDSK1.DSK"), "rb") as f:
+        return f.read()
+
+
 @unittest.skipUnless(tc.AVAILABLE, "ti99-headless with external cards not found (TI99HEADLESS)")
 class TestRom(unittest.TestCase):
     @classmethod
@@ -171,8 +183,7 @@ class TestRom(unittest.TestCase):
             wait_for(m, "OPTIONS")
             m.type("4")
             self.assertIn("CR LF", rows(m)[6])
-            m.press("FCTN", "9")
-            wait_for(m, "ADDRESS BOOK")
+            to_book(m)
             m.type("127.0.0.1:%d\r" % tc.RAW_PORT)
             wait_for(m, "RAW READY")
             m.type("HI\r")
@@ -185,15 +196,13 @@ class TestRom(unittest.TestCase):
             wait_for(m, "OPTIONS")
             m.type("33")                                               # AUTO -> SI -> NO
             self.assertIn("NO", rows(m)[5])
-            m.press("FCTN", "9")
-            wait_for(m, "ADDRESS BOOK")
+            to_book(m)
             m.type("127.0.0.1:%d\r" % tc.RAW_PORT)
             wait_for(m, "RAW READY")
             m.type("XY\r")
             wait_for(m, "GOT 58 59 0D 0A")
             self.assertNotIn("XY", rows(m))
-        with open(os.path.join(self.rig.sd, "DISKS", "_APEDSK1.DSK"), "rb") as f:
-            self.assertIn(b"#P0S1E2N1", f.read())
+        self.assertNotIn(b"BBSLIST", disk1(self.rig))                 # nothing written unasked
 
     def test_64_columns(self):
         """bitmap mode, 64 x 23 for the BBS, the same ANSI handling; back to text mode after"""
@@ -202,8 +211,7 @@ class TestRom(unittest.TestCase):
             wait_for(m, "OPTIONS")
             m.type("5")
             self.assertIn("64", rows(m)[7])
-            m.press("FCTN", "9")
-            wait_for(m, "ADDRESS BOOK")
+            to_book(m)
             m.type(HOST + "\r")
             wait64(m, "READY")
             v = m.vregs()
@@ -233,8 +241,6 @@ class TestRom(unittest.TestCase):
             m.type("H")
             wait_for(m, "ADDRESS BOOK")
             self.assertEqual(m.vregs()[1] & 0x18, 0x10)                 # text mode again
-        with open(os.path.join(self.rig.sd, "DISKS", "_APEDSK1.DSK"), "rb") as f:
-            self.assertIn(b"#P0S1E0N0C1", f.read())
 
     def test_bulk(self):
         with self.machine() as m:
@@ -257,19 +263,28 @@ class TestRom(unittest.TestCase):
             wait_for(m, "Connection failed")
 
     def test_address_book(self):
+        """entries are added and deleted in memory; FCTN-6 writes them after Y"""
         with self.machine() as m:
             m.type(HOST)
             m.press("FCTN", "8")
             wait_for(m, "NAME:")
             m.type("Finta\r")
-            wait_for(m, "Saved in DSK1.BBSLIST")
+            wait_for(m, "Added. F6 writes")
             self.assertEqual(rows(m)[4][1:8], "1 Finta")
             self.assertIn(HOST, rows(m)[4])
-        with open(os.path.join(self.rig.sd, "DISKS", "_APEDSK1.DSK"), "rb") as f:
-            img = f.read()
-        self.assertIn(b"BBSLIST", img)
+            self.assertNotIn(b"BBSLIST", disk1(self.rig))
+            m.press("FCTN", "6")
+            wait_for(m, "Write address book to DSK1.BBSLIST? Y/N")
+            m.type("N")
+            m.frames(60)
+            self.assertNotIn(b"BBSLIST", disk1(self.rig))
+            m.press("FCTN", "6")
+            wait_for(m, "Y/N")
+            m.type("y")                                                # either case
+            wait_for(m, "Saved in DSK1.BBSLIST")
+        img = disk1(self.rig)
         self.assertIn(b"Finta|" + HOST.encode(), img)
-        self.assertIn(b"#P0S1", img)
+        self.assertIn(b"#P0S1E0N0C0", img)
         with self.machine() as m:                                       # read back at start
             self.assertEqual(rows(m)[4][1:8], "1 Finta")
             m.press("FCTN", "X")
@@ -285,8 +300,21 @@ class TestRom(unittest.TestCase):
             m.type("1")
             wait_for(m, "Entry deleted")
             self.assertEqual(rows(m)[4], "")
+        with self.machine() as m:                                       # not written: still there
+            self.assertEqual(rows(m)[4][1:8], "1 Finta")
+            m.press("FCTN", "3")
+            wait_for(m, "Delete which")
+            m.type("1")
+            wait_for(m, "Entry deleted")
+            m.press("FCTN", "6")
+            wait_for(m, "Y/N")
+            m.type("Y")
+            wait_for(m, "Saved in DSK1.BBSLIST")
+        with self.machine() as m:
+            self.assertEqual(rows(m)[4], "")
 
     def test_options(self):
+        """options last for the session; FCTN-6 writes them, without unsaved entries"""
         with self.machine() as m:
             m.press("FCTN", "9")
             wait_for(m, "OPTIONS")
@@ -297,13 +325,30 @@ class TestRom(unittest.TestCase):
             self.assertEqual(m.vregs()[7], 0x31)
             m.type("2")
             self.assertIn("NO", rows(m)[4])
-            m.press("FCTN", "9")
-            wait_for(m, "ADDRESS BOOK")
+            to_book(m)
             self.connect(m)
             self.assertEqual(rows(m)[3], "NAWS 40x24")
             self.assertNotIn("F9 MENU", rows(m)[23])
+        with self.machine() as m:                                       # not saved: defaults
+            self.assertEqual(m.vregs()[7], 0xF4)
+            m.type(HOST)                                               # an entry not saved
+            m.press("FCTN", "8")
+            wait_for(m, "NAME:")
+            m.type("Unsaved\r")
+            wait_for(m, "Added")
+            m.press("FCTN", "9")
+            wait_for(m, "OPTIONS")
+            m.type("1")
+            m.press("FCTN", "6")
+            wait_for(m, "Write options to DSK1.BBSLIST? Y/N")
+            m.type("Y")
+            wait_for(m, "Saved in DSK1.BBSLIST")
+        img = disk1(self.rig)
+        self.assertIn(b"#P1S1E0N0C0", img)
+        self.assertNotIn(b"Unsaved", img)
         with self.machine() as m:                                       # kept in DSK1.BBSLIST
             self.assertEqual(m.vregs()[7], 0x31)
+            self.assertEqual(rows(m)[4], "")
 
     def test_italian(self):
         """the Italian ROM (-D ITALIAN): same code, other texts, H hangs up as in English"""
@@ -311,6 +356,15 @@ class TestRom(unittest.TestCase):
             m.menu(2)
             wait_for(m, "RUBRICA", 300)
             self.assertIn("OPPURE SCRIVI HOST[:PORTA]", rows(m)[13])
+            m.type(HOST)
+            m.press("FCTN", "8")
+            wait_for(m, "NOME:")
+            m.type("Finta\r")
+            wait_for(m, "Aggiunta")
+            m.press("FCTN", "6")
+            wait_for(m, "S/N")
+            m.type("S")
+            wait_for(m, "Salvato in DSK1.BBSLIST")
             self.connect(m)
             m.press("FCTN", "9")
             wait_for(m, "H=RIAGGANCIA")

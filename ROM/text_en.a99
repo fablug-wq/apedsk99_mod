@@ -9,11 +9,11 @@ MBOOK  TEXT 'ADDRESS BOOK'
        BYTE 0
 MADDR  TEXT 'OR TYPE HOST[:PORT]'
        BYTE 0
-MKEYS1 TEXT 'FCTN-E/X CHOOSE  ENTER CALL  F8 SAVE'
+MKEYS1 TEXT 'FCTN-E/X CHOOSE  ENTER CALL  F8 ADD'
        BYTE 0
-MKEYS2 TEXT 'F3 DELETE  F9 OPTIONS  F= QUIT'
+MKEYS2 TEXT 'F3 DELETE F6 SAVE F9 OPTIONS F= QUIT'
        BYTE 0
-MKEYS3 TEXT '1-5 CHANGE  F9 BACK TO ADDRESS BOOK'
+MKEYS3 TEXT '1-5 CHANGE  F6 SAVE  F9 ADDRESS BOOK'
        BYTE 0
 MKEYS4 TEXT 'ANY KEY TO GO BACK TO THE MENU'
        BYTE 0
@@ -51,6 +51,13 @@ MNAME  TEXT 'NAME: '
        BYTE 0
 MFULL  TEXT 'Address book full (9 entries).'
        BYTE 0
+MADDED TEXT 'Added. F6 writes it to disk.'
+       BYTE 0
+MCONFB TEXT 'Write address book to DSK1.BBSLIST? Y/N'
+       BYTE 0
+MCONFO TEXT 'Write options to DSK1.BBSLIST? Y/N'
+       BYTE 0
+YESK   EQU  'Y'
 MSAVED TEXT 'Saved in DSK1.BBSLIST.'
        BYTE 0
 MDSKER TEXT 'Error on DSK1.BBSLIST.'
@@ -58,7 +65,7 @@ MDSKER TEXT 'Error on DSK1.BBSLIST.'
 MEMPTY BYTE 0
 MDELQ  TEXT 'Delete which entry (1-9)?'
        BYTE 0
-MDELD  TEXT 'Entry deleted.'
+MDELD  TEXT 'Entry deleted. F6 writes it to disk.'
        BYTE 0
 MYES   TEXT 'YES           '
        BYTE 0

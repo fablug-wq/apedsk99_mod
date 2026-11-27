@@ -13,6 +13,10 @@ START0 LI   R10,STACK
        CLR  @CRLF
        CLR  @COLM
        BL   @LOADBK
+       LI   R1,SOPT
+       BL   @GETOPT
+       LI   R1,SBK
+       BL   @GETBK
        BL   @SETCOL
        BL   @FWCHK
        MOV  @FWOK,R0
@@ -47,7 +51,10 @@ BK1    CI   R0,K.REDO
 BK2    CI   R0,K.ERAS
        JNE  BK3
        B    @BKDEL
-BK3    CI   R0,K.QUIT
+BK3    CI   R0,K.PROC
+       JNE  BK3Q
+       B    @BKWR
+BK3Q   CI   R0,K.QUIT
        JNE  BK4
        BLWP @>0000
 BK4    CI   R0,K.LEFT
@@ -153,15 +160,9 @@ BS3    MOVB *R2+,*R1+
 BS4    MOVB *R2+,*R1+
        JNE  BS4
        INC  @BOOKN
-       BL   @SAVEBK
-       MOV  R0,R0
-       JEQ  BS8
-       DEC  @BOOKN
-       LI   R1,MDSKER
-       JMP  BKMSG
-BS8    CLR  @FLEN
+       CLR  @FLEN
        CLR  @FIELD
-       LI   R1,MSAVED
+       LI   R1,MADDED
        JMP  BKMSG
 BS9    LI   R1,MEMPTY
 BKMSG  DECT R10
@@ -203,11 +204,28 @@ BD3    MOVB *R2+,*R1+
        DEC  R7
        JNE  BD3
 BD4    DEC  @BOOKN
-       BL   @SAVEBK
        LI   R1,MDELD
+       JMP  BKMSG
+
+* FCTN-6: write the address book (with the options as last saved), after Y/N
+BKWR   LI   R1,MCONFB
+       BL   @CONFRM
+       LI   R1,MEMPTY
        MOV  R0,R0
        JEQ  BKMSG
+       LI   R1,CBK
+       BL   @GETBK
+       LI   R0,SOPT
+       MOV  R0,@SVOPT
+       LI   R0,CBK
+       MOV  R0,@SVBK
+       BL   @SAVEBK
        LI   R1,MDSKER
+       MOV  R0,R0
+       JNE  BKMSG
+       LI   R1,SBK
+       BL   @GETBK
+       LI   R1,MSAVED
        JMP  BKMSG
 BD9    LI   R1,MEMPTY
        JMP  BKMSG
@@ -379,6 +397,8 @@ OP3    BL   @KEY
        JEQ  OP3
        CI   R0,K.BACK
        JEQ  OP5
+       CI   R0,K.PROC
+       JEQ  OPWR
        AI   R0,-'1'
        CI   R0,4
        JH   OP3
@@ -392,9 +412,85 @@ OP3    BL   @KEY
        CLR  R7
 OP4    MOV  R7,*R6
        BL   @SETCOL
+       BL   @MSGCLR
        JMP  OP1
-OP5    BL   @SAVEBK
-       B    @BOOKSC
+OP5    B    @BOOKSC
+
+* FCTN-6: write the options (with the address book as last saved), after Y/N
+OPWR   LI   R1,MCONFO
+       BL   @CONFRM
+       LI   R1,MEMPTY
+       MOV  R0,R0
+       JEQ  OPW8
+       LI   R1,COPT
+       BL   @GETOPT
+       LI   R0,COPT
+       MOV  R0,@SVOPT
+       LI   R0,SBK
+       MOV  R0,@SVBK
+       BL   @SAVEBK
+       LI   R1,MDSKER
+       MOV  R0,R0
+       JNE  OPW8
+       LI   R1,SOPT
+       BL   @GETOPT
+       LI   R1,MSAVED
+OPW8   DECT R10
+       MOV  R1,*R10
+       BL   @MSGCLR
+       MOV  *R10+,R1
+       LI   R0,16*40+1
+       BL   @PRZ
+       JMP  OP3
+
+* question R1 on row 16 -> R0 = 1 if the answer is YESK
+CONFRM DECT R10
+       MOV  R11,*R10
+       DECT R10
+       MOV  R1,*R10
+       BL   @MSGCLR
+       MOV  *R10+,R1
+       LI   R0,16*40+1
+       BL   @PRZ
+CF1    BL   @KEY
+       MOV  R0,R0
+       JEQ  CF1
+       ANDI R0,>DF
+       CI   R0,YESK
+       JEQ  CF2
+       CLR  R0
+       JMP  CF3
+CF2    LI   R0,1
+CF3    MOV  *R10+,R11
+       B    *R11
+
+* current options -> 5 words at R1
+GETOPT CLR  R3
+GO1    MOV  R3,R4
+       SLA  R4,1
+       MOV  @OPTVAR(R4),R5
+       MOV  *R5,*R1+
+       INC  R3
+       CI   R3,5
+       JL   GO1
+       B    *R11
+
+* current address book -> count and 9 entries at R1
+GETBK  MOV  @BOOKN,*R1+
+       LI   R2,BOOK
+       LI   R3,9*ESIZE/2
+GB1    MOV  *R2+,*R1+
+       DEC  R3
+       JNE  GB1
+       B    *R11
+
+* R0 = entry number -> R1 = its address in the block at SVBK
+SVENT  LI   R1,ESIZE
+       MPY  R0,R1
+       MOV  R2,R1
+       A    @SVBK,R1
+       INCT R1
+       B    *R11
 
 ********************************************************************************
 * firmware without the terminal commands, or no APEDSK99
@@ -616,7 +712,8 @@ PA8B   CLR  R0
        INC  @BOOKN
 PA9    B    *R11
 
-* write the file: options record, then the entries -> R0 = error (0: none)
+* write the file: options from the block at SVOPT, entries from the block at
+* SVBK (count, entries) -> R0 = error (0: none)
 SAVEBK DECT R10
        MOV  R11,*R10
        LI   R1,>0012
@@ -630,7 +727,7 @@ SAVEBK DECT R10
 SBO1   MOVB @OPTLET(R3),*R1+
        MOV  R3,R4
        SLA  R4,1
-       MOV  @OPTVAR(R4),R4
+       A    @SVOPT,R4
        MOV  *R4,R0
        AI   R0,'0'
        SWPB R0
@@ -642,10 +739,12 @@ SBO1   MOVB @OPTLET(R3),*R1+
        MOV  R0,R0
        JNE  SB8
        CLR  R6
-SB1    C    R6,@BOOKN
+SB1    CLR  R0
+       MOV  @SVBK,R4
+       C    R6,*R4
        JHE  SB8
        MOV  R6,R0
-       BL   @ENTRY
+       BL   @SVENT
        MOV  R1,R2
        LI   R1,RECBUF
 SB2    MOVB *R2+,*R1+
@@ -654,7 +753,7 @@ SB2    MOVB *R2+,*R1+
        MOVB @BAR,*R1+
        MOV  R1,R7
        MOV  R6,R0
-       BL   @ENTRY
+       BL   @SVENT
        AI   R1,NSIZE
        MOV  R1,R2
        MOV  R7,R1

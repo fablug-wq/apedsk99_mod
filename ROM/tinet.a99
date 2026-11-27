@@ -107,6 +107,12 @@ ESIZE  EQU  48
 NSIZE  EQU  16
 SCRBUF EQU  V+>300
 RECBUF EQU  V+>700
+SVOPT  EQU  V+>7F0
+SVBK   EQU  V+>7F2
+SOPT   EQU  V+>800
+COPT   EQU  V+>80A
+SBK    EQU  V+>820
+CBK    EQU  V+>A00
 STACK  EQU  >3FF0
 
 * --- keys (KSCAN mode 5)
@@ -121,6 +127,7 @@ K.UP   EQU  11
 K.ENTR EQU  13
 K.BACK EQU  15
 K.DEL  EQU  3
+K.PROC EQU  12
 
 ********************************************************************************
 * shared by both banks: header, start, bank switching, VDP, keyboard
