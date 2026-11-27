@@ -8,12 +8,18 @@ Then it works in character mode, echoing what it receives. Lines:
   ANSI  -> an ANSI test page: cursor positioning, erase, colours, save/restore,
            a cursor position request (ESC[6n) whose answer it prints back
   KEYS  -> shows the code of every byte received (hex) until Q
+  NOECHO -> says WONT ECHO and stops echoing: every line comes back as
+           "GOT <hex bytes>" (CR, and LF if it follows), until the line ECHO
   QUIT  -> says goodbye and closes the connection
 
-usage: fake_bbs.py [port] [address]   (default 2323 on 127.0.0.1;
+With "raw" as third argument it is a plain TCP service instead (as POP3 or
+SMTP would be): no telnet negotiation, no echo, "RAW READY", then lines come
+back as "GOT <hex>"; QUIT closes.
+
+usage: fake_bbs.py [port] [address] [raw]   (default 2323 on 127.0.0.1;
        use address 0.0.0.0 to reach it from the TI over the LAN)
 """
-import socket, sys, time
+import re, socket, sys, time
 
 IAC, DONT, DO, WONT, WILL, SB, SE = 255, 254, 253, 252, 251, 250, 240
 ECHO, SGA, TTYPE, NAWS = 1, 3, 24, 31
@@ -21,6 +27,38 @@ ECHO, SGA, TTYPE, NAWS = 1, 3, 24, 31
 
 def big_pattern():
     return bytes((i * 7) % 256 for i in range(5000))
+
+
+def lines_back(conn, stop):
+    """every line received -> GOT <hex of its bytes, CR and a following LF included>"""
+    conn.settimeout(30)
+    line, pending = b'', b''
+    while True:
+        c, pending = (pending, b'') if pending else (conn.recv(1), b'')
+        if not c:
+            return False
+        line += c
+        if c == b'\r':
+            conn.settimeout(0.3)
+            try:
+                nxt = conn.recv(1)
+                if nxt == b'\n':
+                    line += nxt
+                else:
+                    pending = nxt                     # the start of the next line
+            except socket.timeout:
+                pass
+            conn.settimeout(30)
+            text = line.strip(b'\r\n\x00')
+            conn.sendall(b'GOT ' + b' '.join(b'%02X' % x for x in line) + b'\r\n')
+            if text.upper() == stop:
+                return True
+            line = b''
+
+
+def handle_raw(conn):
+    conn.sendall(b'RAW READY\r\n')
+    lines_back(conn, b'QUIT')
 
 
 def handle(conn):
@@ -84,6 +122,7 @@ def handle(conn):
             return
         if not chunk:
             return
+        chunk = re.sub(rb'\xff[\xfb-\xfe].', b'', chunk)  # option answers are not text
         conn.sendall(chunk.replace(b'\r', b'\r\n'))  # echo (we said WILL ECHO)
         line += chunk
         while b'\r' in line:
@@ -95,6 +134,13 @@ def handle(conn):
                 ansi_page(conn)
             elif cmd == b'KEYS':
                 keys(conn)
+            elif cmd == b'NOECHO':
+                conn.sendall(bytes([IAC, WONT, ECHO]) + b'NOECHO ON\r\n')
+                if not lines_back(conn, b'ECHO'):
+                    return
+                conn.sendall(bytes([IAC, WILL, ECHO]) + b'ECHO ON\r\n')
+                line = b''
+                conn.settimeout(30)
             elif cmd == b'QUIT':
                 conn.sendall(b'Bye\r\n')
                 return
@@ -140,13 +186,14 @@ def main():
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     addr = sys.argv[2] if len(sys.argv) > 2 else '127.0.0.1'
+    raw = len(sys.argv) > 3 and sys.argv[3] == 'raw'
     s.bind((addr, port))
     s.listen(1)
     print('fake_bbs: listening on %s:%d' % (addr, port), flush=True)
     while True:
         conn, _ = s.accept()
         try:
-            handle(conn)
+            handle_raw(conn) if raw else handle(conn)
         except OSError as e:
             print('fake_bbs:', e, flush=True)
         conn.close()

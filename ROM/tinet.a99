@@ -1,5 +1,5 @@
 ********************************************************************************
-* TI-NET TERM 0.1 - telnet / BBS terminal for the TI-99/4A with APEDSK99
+* TI-NET TERM 0.2 - telnet / BBS terminal for the TI-99/4A with APEDSK99
 *
 * 8K cartridge ROM at >6000. Needs the 32K memory expansion and the APEDSK99
 * firmware with the network terminal commands (>70 CONNECT, >71 SEND,
@@ -12,8 +12,10 @@
 *   WONT / DONT to the rest
 * - ANSI: cursor A B C D G H f d s u, erase J K, n (6n: cursor report);
 *   SGR (m) colours are read and ignored (one colour pair in text mode)
-* - address book and options in DSK1.BBSLIST (DIS/VAR 80): "#P<n>S<n>" then
-*   one "name|host[:port]" record per entry
+* - local echo: AUTO (on while the server has not said WILL ECHO), on, off;
+*   ENTER sends CR or CR LF: for services that are not BBSes (POP3, SMTP...)
+* - address book and options in DSK1.BBSLIST (DIS/VAR 80): "#P<n>S<n>E<n>N<n>"
+*   (palette, status row, echo, ENTER) then one "name|host[:port]" per entry
 *
 * Build: xas99.py -R -b -o TINETC.bin tinet.a99   (see build.sh)
 ********************************************************************************
@@ -81,6 +83,9 @@ NLEN   EQU  V+240
 NAME   EQU  V+242
 RECLEN EQU  V+260
 BKSEL  EQU  V+>2F0
+ECHOM  EQU  V+>2F2
+CRLF   EQU  V+>2F4
+SRVECH EQU  V+>2F6
 BOOK   EQU  V+262
 ESIZE  EQU  48
 NSIZE  EQU  16
@@ -126,6 +131,8 @@ START  LIMI 0
        LI   R0,1
        MOV  R0,@STATL
        CLR  @PAL
+       CLR  @ECHOM
+       CLR  @CRLF
        BL   @LOADBK
        BL   @SETCOL
        BL   @FWCHK
@@ -469,39 +476,44 @@ OPTSC  LI   R10,STACK
        BL   @CLS
        LI   R3,OPSCR
        BL   @DRAWL
-OP1    LI   R0,3*40+24
-       MOV  @PAL,R1
-       SLA  R1,1
-       MOV  @PALNAM(R1),R1
+OP1    CLR  R3
+OP1A   MOV  R3,R4
+       AI   R4,3
+       LI   R5,40
+       MPY  R5,R4
+       AI   R5,24
+       MOV  R5,R0
+       MOV  R3,R4
+       SLA  R4,1
+       MOV  @OPTVAR(R4),R6
+       MOV  *R6,R6
+       SLA  R6,1
+       A    @VALTAB(R4),R6
+       MOV  *R6,R1
        BL   @PRZ
-       LI   R0,4*40+24
-       LI   R1,MNO
-       MOV  @STATL,R2
-       JEQ  OP2
-       LI   R1,MYES
-OP2    BL   @PRZ
+       INC  R3
+       CI   R3,4
+       JL   OP1A
 OP3    BL   @KEY
        MOV  R0,R0
        JEQ  OP3
-       CI   R0,'1'
-       JNE  OP4
-       MOV  @PAL,R1
-       INC  R1
-       CI   R1,3
-       JL   OP3A
-       CLR  R1
-OP3A   MOV  R1,@PAL
+       CI   R0,K.BACK
+       JEQ  OP5
+       AI   R0,-'1'
+       CI   R0,3
+       JH   OP3
+       MOV  R0,R4
+       SLA  R4,1
+       MOV  @OPTVAR(R4),R6
+       MOV  *R6,R7
+       INC  R7
+       C    R7,@OPTMAX(R4)
+       JLE  OP4
+       CLR  R7
+OP4    MOV  R7,*R6
        BL   @SETCOL
        JMP  OP1
-OP4    CI   R0,'2'
-       JNE  OP5
-       LI   R1,1
-       XOR  @STATL,R1
-       MOV  R1,@STATL
-       JMP  OP1
-OP5    CI   R0,K.BACK
-       JNE  OP3
-       BL   @SAVEBK
+OP5    BL   @SAVEBK
        B    @BOOKSC
 
 ********************************************************************************
@@ -536,6 +548,7 @@ TERM   LI   R10,STACK
        CLR  @CURON
        CLR  @FRM
        CLR  @SECS
+       CLR  @SRVECH
        LI   R0,24
        S    @STATL,R0
        MOV  R0,@ROWS
@@ -660,9 +673,56 @@ TKCSI  DECT R10
        LI   R1,'['
        BL   @TXPUT
        MOV  *R10+,R1
+       BL   @TXPUT
+       JMP  TKS9
 TKSEND BL   @TXPUT
-       CLR  R0
+       CI   R1,13
+       JNE  TKS2
+       MOV  @CRLF,R0
+       JEQ  TKS2
+       LI   R1,10
+       BL   @TXPUT
+       LI   R1,13
+TKS2   BL   @LECHO
+       MOV  R0,R0
+       JEQ  TKS9
+       DECT R10
+       MOV  R1,*R10
+       BL   @CUROFF
+       MOV  *R10+,R1
+       CI   R1,13
+       JNE  TKS3
+       BL   @CTRL
+       LI   R1,10
+       JMP  TKS5
+TKS3   CI   R1,8
+       JNE  TKS4
+       BL   @CTRL
+       LI   R1,32
+       BL   @CTRL
+       LI   R1,8
+       JMP  TKS5
+TKS4   CI   R1,32
+       JL   TKS9
+       CI   R1,126
+       JH   TKS9
+TKS5   BL   @CTRL
+TKS9   CLR  R0
 TK9    MOV  *R10+,R11
+       B    *R11
+
+* local echo? R0 = 1 yes: ECHOM 1 (on), or 0 (AUTO) while the server does not echo
+LECHO  MOV  @ECHOM,R0
+       JEQ  LE1
+       DEC  R0
+       JEQ  LEY
+       CLR  R0
+       B    *R11
+LE1    MOV  @SRVECH,R0
+       JEQ  LEY
+       CLR  R0
+       B    *R11
+LEY    LI   R0,1
        B    *R11
 
 * FCTN-9 during a session: the menu on the status row
@@ -817,8 +877,17 @@ TN2    CLR  @TST
        CI   R5,3
        JNE  TN2R
 TN2A   LI   R6,>FD
+       CI   R5,1
+       JNE  TN2R
+       SETO @SRVECH
        JMP  TN2R
-TN2D   CI   R0,>FD
+TN2D   CI   R0,>FC
+       JNE  TN2E
+       CI   R5,1
+       JNE  TN2X
+       CLR  @SRVECH
+       JMP  TN2X
+TN2E   CI   R0,>FD
        JNE  TN2X
        LI   R6,>FC
        CI   R5,24
@@ -1556,23 +1625,21 @@ PARSE  LI   R1,RECBUF
 PA1    DEC  R2
        JEQ  PA9
        INC  R1
-       CB   *R1,@LETP
-       JNE  PA2
-       MOVB @1(R1),R0
-       SRL  R0,8
-       AI   R0,-'0'
-       CI   R0,2
-       JH   PA1
-       MOV  R0,@PAL
+       CLR  R3
+PA1A   CB   *R1,@OPTLET(R3)
+       JEQ  PA1B
+       INC  R3
+       CI   R3,4
+       JL   PA1A
        JMP  PA1
-PA2    CB   *R1,@LETS
-       JNE  PA1
-       MOVB @1(R1),R0
+PA1B   MOVB @1(R1),R0
        SRL  R0,8
        AI   R0,-'0'
-       CI   R0,1
+       SLA  R3,1
+       C    R0,@OPTMAX(R3)
        JH   PA1
-       MOV  R0,@STATL
+       MOV  @OPTVAR(R3),R4
+       MOV  R0,*R4
        JMP  PA1
 PA5    MOV  @BOOKN,R0
        CI   R0,9
@@ -1624,16 +1691,18 @@ SAVEBK DECT R10
        JNE  SB9
        LI   R1,RECBUF
        MOVB @HASH,*R1+
-       MOVB @LETP,*R1+
-       MOV  @PAL,R0
+       CLR  R3
+SBO1   MOVB @OPTLET(R3),*R1+
+       MOV  R3,R4
+       SLA  R4,1
+       MOV  @OPTVAR(R4),R4
+       MOV  *R4,R0
        AI   R0,'0'
        SWPB R0
        MOVB R0,*R1+
-       MOVB @LETS,*R1+
-       MOV  @STATL,R0
-       AI   R0,'0'
-       SWPB R0
-       MOVB R0,*R1+
+       INC  R3
+       CI   R3,4
+       JL   SBO1
        BL   @WRREC
        MOV  R0,R0
        JNE  SB8
@@ -1779,8 +1848,7 @@ HAA    BYTE >AA
 PERIOD TEXT '.'
 HASH   TEXT '#'
 BAR    TEXT '|'
-LETP   TEXT 'P'
-LETS   TEXT 'S'
+OPTLET TEXT 'PSEN'
 B24    BYTE 24
 B1     BYTE 1
 TTYPE  BYTE 10,>FF,>FA,24,0
@@ -1788,6 +1856,10 @@ TTYPE  BYTE 10,>FF,>FA,24,0
        BYTE >FF,>F0
 NAWS   BYTE 6,>FF,>FA,31,0,40,0
        EVEN
+* the options: variable, highest value, names of the values
+OPTVAR DATA PAL,STATL,ECHOM,CRLF
+OPTMAX DATA 2,1,2,1
+VALTAB DATA PALNAM,YNNAM,ECHNAM,CRNAM
 PABT   BYTE 0,>14
        DATA VBUF
        BYTE 80,0
@@ -1803,14 +1875,15 @@ LINE40 BYTE >C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,
        EVEN
 BKSCR  DATA 0*40,MTITLE,1*40,LINE40,2*40+1,MBOOK
        DATA 13*40+1,MADDR,21*40,LINE40,22*40+1,MKEYS1,23*40+1,MKEYS2,>FFFF
-OPSCR  DATA 0*40,MTITLO,1*40,LINE40,3*40+1,MOPT1,4*40+1,MOPT2,5*40+1,MOPT3
-       DATA 6*40+4,MOPT4,8*40+1,MOPT5,21*40,LINE40,22*40+1,MKEYS3,>FFFF
+OPSCR  DATA 0*40,MTITLO,1*40,LINE40,3*40+1,MOPT1,4*40+1,MOPT2,5*40+1,MOPT6
+       DATA 6*40+1,MOPT7,8*40+1,MOPT3,9*40+4,MOPT4,11*40+1,MOPT5
+       DATA 21*40,LINE40,22*40+1,MKEYS3,>FFFF
 FWSCR  DATA 0*40,MTITLE,1*40,LINE40,3*40+1,MFWT,8*40+1,MFW2,9*40+1,MFW3
        DATA 21*40,LINE40,22*40+1,MKEYS4,>FFFF
 
-MTITLE TEXT ' TI-NET TERM 0.1'
+MTITLE TEXT ' TI-NET TERM 0.2'
        BYTE 0
-MTITLO TEXT ' TI-NET TERM 0.1 '
+MTITLO TEXT ' TI-NET TERM 0.2 '
        BYTE >FA
        TEXT ' OPZIONI'
        BYTE 0
@@ -1822,13 +1895,17 @@ MKEYS1 TEXT 'FCTN-E/X SCEGLI  ENTER CHIAMA  F8 SALVA'
        BYTE 0
 MKEYS2 TEXT 'F3 CANCELLA  F9 OPZIONI  F= ESCI'
        BYTE 0
-MKEYS3 TEXT '1-2 CAMBIA  F9 TORNA ALLA RUBRICA'
+MKEYS3 TEXT '1-4 CAMBIA  F9 TORNA ALLA RUBRICA'
        BYTE 0
 MKEYS4 TEXT 'UN TASTO PER TORNARE AL MENU'
        BYTE 0
 MOPT1  TEXT '1  Palette ...........'
        BYTE 0
 MOPT2  TEXT '2  Riga di stato .....'
+       BYTE 0
+MOPT6  TEXT '3  Eco locale ........'
+       BYTE 0
+MOPT7  TEXT '4  ENTER manda .......'
        BYTE 0
 MOPT3  TEXT '   Colonne ........... 40'
        BYTE 0
@@ -1876,10 +1953,20 @@ MROWS  TEXT '23'
        BYTE 0
 MF9    TEXT 'F9 MENU'
        BYTE 0
-MYES   TEXT 'SI        '
+MYES   TEXT 'SI           '
        BYTE 0
-MNO    TEXT 'NO        '
+MNO    TEXT 'NO           '
        BYTE 0
+MAUTO  TEXT 'AUTO         '
+       BYTE 0
+MCR    TEXT 'CR           '
+       BYTE 0
+MCRLF  TEXT 'CR LF        '
+       BYTE 0
+       EVEN
+YNNAM  DATA MNO,MYES
+ECHNAM DATA MAUTO,MYES,MNO
+CRNAM  DATA MCR,MCRLF
 PALNAM DATA PNM0,PNM1,PNM2
 PNM0   TEXT 'BIANCO SU BLU'
        BYTE 0

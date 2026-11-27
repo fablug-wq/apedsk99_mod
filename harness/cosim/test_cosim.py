@@ -29,6 +29,7 @@ except ImportError:
     th, AVAILABLE = None, False
 
 BBS_PORT = 2324
+RAW_PORT = 2325                                      # the fake BBS as a plain TCP service
 SERVER = os.path.join(HERE, "firmware_server")
 
 
@@ -58,14 +59,18 @@ class Rig:
             with open(os.path.join(self.sd, "DISKS", "_APEDSK%d.DSK" % n), "wb") as f:
                 f.write(blank_dsk("APEDSK%d" % n))
         shutil.copy(os.path.join(REPO, "SD", "DISKS", "NETTEST.DSK"), os.path.join(self.sd, "DISKS"))
-        self.bbs = subprocess.Popen([sys.executable, os.path.join(HARNESS, "fake_bbs.py"), str(BBS_PORT)],
+        fake = os.path.join(HARNESS, "fake_bbs.py")
+        self.bbs = subprocess.Popen([sys.executable, fake, str(BBS_PORT)],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(50):
-            try:
-                socket.create_connection(("127.0.0.1", BBS_PORT), 0.1).close()
-                break
-            except OSError:
-                time.sleep(0.05)
+        self.raw = subprocess.Popen([sys.executable, fake, str(RAW_PORT), "127.0.0.1", "raw"],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for port in (BBS_PORT, RAW_PORT):
+            for _ in range(50):
+                try:
+                    socket.create_connection(("127.0.0.1", port), 0.1).close()
+                    break
+                except OSError:
+                    time.sleep(0.05)
         time.sleep(0.1)
 
     def card(self):
@@ -73,8 +78,9 @@ class Rig:
                 {"server": SERVER, "sd": self.sd, "ftp": self.ftp, "log": os.path.join(self.dir, "fw.log")})
 
     def close(self):
-        self.bbs.kill()
-        self.bbs.wait()
+        for p in (self.bbs, self.raw):
+            p.kill()
+            p.wait()
         shutil.rmtree(self.dir, ignore_errors=True)
 
 

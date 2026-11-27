@@ -7,7 +7,7 @@ A modification of [APEDSK99](https://github.com/jambuur/APEDSK99) by Jochen Buur
 | Part | Status |
 |---|---|
 | Firmware commands >70–>73 (CONNECT, SEND, RECV, CLOSE) | done, tested in the PC harness and in the co-simulation; not yet tested on real hardware |
-| TI-NET TERM 0.1 (`ROM/TINETC.bin`, 8K cartridge, needs 32K) | 40 columns, telnet, ANSI, CP437, address book on `DSK1.BBSLIST`; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
+| TI-NET TERM 0.2 (`ROM/TINETC.bin`, 8K cartridge, needs 32K) | 40 columns, telnet, ANSI, CP437, address book on `DSK1.BBSLIST`, local echo and CR LF for plain services; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
 | DSRs | unchanged: the commands work with both `APEDSK99.DSR` and `APEDSKPR.DSR` |
 
 The firmware is compatible with the existing DSRs, and printing, `FGET`, `FPUT` and `TIME` keep working, also during a telnet session. It adds about 390 bytes of flash (about 440 left on the Uno). Details: [Network terminal commands](#network-terminal-commands-work-in-progress) below.

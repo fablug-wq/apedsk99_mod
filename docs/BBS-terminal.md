@@ -3,7 +3,7 @@
 Status, 27 November 2026:
 
 - **firmware:** done, tested in the PC harness and in the co-simulation (below);
-- **TI-NET TERM 0.1**, the terminal cartridge (`ROM/`): written in assembly, 40 columns, tested on the emulated console against the real firmware and DSR;
+- **TI-NET TERM 0.2**, the terminal cartridge (`ROM/`): written in assembly, 40 columns, tested on the emulated console against the real firmware and DSR;
 - **real hardware:** not tested yet.
 
 Screenshots from the emulator: `docs/screenshots/`. The early mockups: `docs/terminal-mockup.html`.
@@ -44,7 +44,7 @@ Facts that matter for the program:
 - Status codes are written to `CALLST` directly: `CALLstatus()` with an error code would overwrite `CALLBF` with the error text.
 - Cost: about +390 bytes of flash (about 440 left), no static RAM; 32 bytes of stack during the command.
 
-## The terminal program: TI-NET TERM 0.1
+## The terminal program: TI-NET TERM 0.2
 
 An 8K cartridge ROM (`ROM/TINETC.bin`, source `ROM/tinet.a99`, font `ROM/font.py`). It needs the 32K memory expansion and the firmware of this branch, and works with either APEDSK99 DSR.
 
@@ -62,7 +62,7 @@ Keys in a session:
 
 | Key | Sends |
 |---|---|
-| ENTER | CR (>0D) |
+| ENTER | CR (>0D), or CR LF (>0D >0A) with the option |
 | FCTN-S | BS (>08) |
 | FCTN-1 (DEL) | DEL (>7F) |
 | FCTN-7 (AID) | ESC (>1B) |
@@ -73,19 +73,21 @@ Keys in a session:
 
 ROM is read-only and RAM is lost at power-off, so the address book and the options are kept **in a file on disk**, read and written through the normal DSR file calls (the ROM has its own DSRLNK). This costs no Arduino flash and works with both DSRs.
 
-`DSK1.BBSLIST` is DIS/VAR 80: first `#P<palette>S<status row>` (e.g. `#P0S1`), then one record per entry, `name|host[:port]`, at most 9. It can be made on a PC too (a text file put on the disk image with xdm99). Without the file the address book starts empty; the first save creates it.
+`DSK1.BBSLIST` is DIS/VAR 80: first the options, `#P<palette>S<status row>E<echo>N<ENTER>` (e.g. `#P0S1E0N0`; a missing letter keeps its default, so 0.1 files still load), then one record per entry, `name|host[:port]`, at most 9. It can be made on a PC too (a text file put on the disk image with xdm99). Without the file the address book starts empty; the first save creates it.
 
 Options (FCTN-9 in the address book; saved when you leave the screen):
 
 - palette: white on blue, green on black, black on cyan;
 - status row: on (the BBS gets 23 rows) or off (24 rows);
+- local echo: AUTO (default: on while the server has not said WILL ECHO, so off with BBSes, on with plain services), on, off;
+- ENTER sends: CR (default, what BBSes expect) or CR LF (what POP3, SMTP and most line-based services want);
 - 40 columns only in this version; 80 columns with the F18A are planned.
 
 ### Telnet
 
 As implemented in `TNBYTE` (the `Telnet` struct in `harness/test_terminal.cpp` is the same logic in C++):
 
-- Server WILL ECHO and WILL SGA → answer DO (otherwise no echo and no character mode).
+- Server WILL ECHO and WILL SGA → answer DO (otherwise no echo and no character mode). WILL ECHO / WONT ECHO also switch the AUTO local echo off / on.
 - Server DO TTYPE → WILL TTYPE; on SB TTYPE SEND answer SB TTYPE IS `ANSI`.
 - Server DO NAWS → WILL NAWS + SB NAWS with the screen size.
 - Anything else: WONT / DONT. DONT / WONT from the server: no answer.
@@ -109,7 +111,7 @@ Measured in the emulator: about 46,000 CPU cycles for a packet of 31 bytes (abou
 ## Testing
 
 - `harness/cosim/`: **co-simulation**. The real sketch runs as a process (`firmware_server`) and is the firmware of an APEDSK99 card in an emulated TI-99/4A ([ti99-headless](https://github.com/fablug-wq/ti99-headless) 0.2.0 or later: js99er with the real console ROM and GROM). Every word the TI writes into >4000–>5FFF runs `loop()` once, as the GAL signals on the hardware (A15 = 0: once per word), and the TI waits meanwhile. So the real DSR (disks, CALLs) and the terminal commands run as on the machine, with the SD card and FTP server as folders and the network through the host. `test_cosim.py`: TI BASIC SAVE/OLD; `NETTEST` in Extended BASIC against the fake BBS.
-- `ROM/test_rom.py`: TI-NET TERM in the co-simulation, 8 tests: the address book screen; a session (negotiation, ANSI and CP437 on screen, the ANSI test page with `ESC[6n`, the codes the keys send, FCTN-9 R); 5000 bytes; the BBS hanging up; a refused connection; saving, reading back, choosing and deleting entries in `DSK1.BBSLIST`; the options (palette, status row → NAWS 40×24, kept on disk); the firmware of `main` (the ROM says it lacks the commands). `ROM/screenshots.py` makes `docs/screenshots/`.
+- `ROM/test_rom.py`: TI-NET TERM in the co-simulation, 10 tests: the address book screen; a session (negotiation, ANSI and CP437 on screen, the ANSI test page with `ESC[6n`, the codes the keys send, FCTN-9 R); 5000 bytes; the BBS hanging up; a refused connection; local echo AUTO with a BBS that stops and restarts echoing; a plain TCP service (the fake BBS in raw mode) with ENTER = CR LF and echo AUTO, then off; saving, reading back, choosing and deleting entries in `DSK1.BBSLIST`; the options (palette, status row → NAWS 40×24, kept on disk); the firmware of `main` (the ROM says it lacks the commands). `ROM/screenshots.py` makes `docs/screenshots/`.
 
   ```
   TI99HEADLESS=/path/to/ti99-headless XDT99=/path/to/xdt99 python3 ROM/test_rom.py -v

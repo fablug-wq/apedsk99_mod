@@ -60,7 +60,7 @@ class TestRom(unittest.TestCase):
     def test_book_screen(self):
         with self.machine() as m:
             r = rows(m)
-            self.assertEqual(r[0].strip(), "TI-NET TERM 0.1")
+            self.assertEqual(r[0].strip(), "TI-NET TERM 0.2")
             self.assertIn("OPPURE SCRIVI HOST[:PORTA]", r[13])
             self.assertEqual(m.vregs()[1] & 0x18, 0x10)                 # text mode
             m.type("abc{LEFT}")                                       # FCTN-S deletes
@@ -82,6 +82,7 @@ class TestRom(unittest.TestCase):
             self.assertIn("F9 MENU", r[23])
             m.type("Hello\r")
             wait_for(m, "Hello")
+            self.assertNotIn("HelloHello", "\n".join(rows(m)))         # the BBS echoes, we do not
 
             # the ANSI test page
             m.type("ANSI\r")
@@ -115,6 +116,52 @@ class TestRom(unittest.TestCase):
             wait_for(m, "R=RIAGGANCIA")
             m.type("R")
             wait_for(m, "RUBRICA")
+
+    def test_local_echo(self):
+        """AUTO: local echo while the server does not echo (WONT ECHO), off again after WILL ECHO"""
+        with self.machine() as m:
+            self.connect(m)
+            m.type("NOECHO\r")
+            wait_for(m, "NOECHO ON")
+            m.type("AB\r")
+            wait_for(m, "GOT 41 42 0D")
+            self.assertIn("AB", rows(m))                               # our own echo
+            m.type("ECHO\r")
+            tc.wait_line(m, "ECHO ON")
+            m.type("CD\r")
+            tc.wait_line(m, "CD")
+            self.assertNotIn("CDCD", "\n".join(rows(m)))
+
+    def test_plain_service(self):
+        """a service that is not a BBS (no telnet, no echo), ENTER = CR LF, echo off"""
+        with self.machine() as m:
+            m.press("FCTN", "9")
+            wait_for(m, "OPZIONI")
+            m.type("4")
+            self.assertIn("CR LF", rows(m)[6])
+            m.press("FCTN", "9")
+            wait_for(m, "RUBRICA")
+            m.type("127.0.0.1:%d\r" % tc.RAW_PORT)
+            wait_for(m, "RAW READY")
+            m.type("HI\r")
+            wait_for(m, "GOT 48 49 0D 0A")
+            self.assertIn("HI", rows(m))                               # AUTO: local echo
+            m.press("FCTN", "9")
+            m.type("R")
+            wait_for(m, "RUBRICA")
+            m.press("FCTN", "9")
+            wait_for(m, "OPZIONI")
+            m.type("33")                                               # AUTO -> SI -> NO
+            self.assertIn("NO", rows(m)[5])
+            m.press("FCTN", "9")
+            wait_for(m, "RUBRICA")
+            m.type("127.0.0.1:%d\r" % tc.RAW_PORT)
+            wait_for(m, "RAW READY")
+            m.type("XY\r")
+            wait_for(m, "GOT 58 59 0D 0A")
+            self.assertNotIn("XY", rows(m))
+        with open(os.path.join(self.rig.sd, "DISKS", "_APEDSK1.DSK"), "rb") as f:
+            self.assertIn(b"#P0S1E2N1", f.read())
 
     def test_bulk(self):
         with self.machine() as m:
