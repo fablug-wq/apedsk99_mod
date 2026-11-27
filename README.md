@@ -7,7 +7,7 @@ A modification of [APEDSK99](https://github.com/jambuur/APEDSK99) by Jochen Buur
 | Part | Status |
 |---|---|
 | Firmware commands >70–>73 (CONNECT, SEND, RECV, CLOSE) | done, tested in the PC harness and in the co-simulation; not yet tested on real hardware |
-| TI-NET TERM 0.2 (`ROM/TINETC.bin`, 8K cartridge, needs 32K) | 40 columns, telnet, ANSI, CP437, address book on `DSK1.BBSLIST`, local echo and CR LF for plain services; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
+| TI-NET TERM 0.2 (`ROM/TINETC.bin` English, `ROM/TINETITC.bin` Italian; 8K cartridge, needs 32K) | 40 columns, telnet, ANSI, CP437, address book on `DSK1.BBSLIST`, local echo and CR LF for plain services; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
 | DSRs | unchanged: the commands work with both `APEDSK99.DSR` and `APEDSKPR.DSR` |
 
 The firmware is compatible with the existing DSRs, and printing, `FGET`, `FPUT` and `TIME` keep working, also during a telnet session. It adds about 390 bytes of flash (about 440 left on the Uno). Details: [Network terminal commands](#network-terminal-commands-work-in-progress) below.
@@ -128,13 +128,13 @@ Four firmware commands let a TI program open a TCP connection, for example to a 
 
 ## TI-NET TERM
 
-Load `ROM/TINETC.bin` as an 8K cartridge (non-banked, >6000) on a loader that takes one (FinalGROM99, a flash cartridge, an emulator). With the 32K expansion and the firmware of this branch it appears as TI-NET TERM in the menu. Usage, keys and the `DSK1.BBSLIST` format: `docs/BBS-terminal.md`.
+Load `ROM/TINETC.bin` (English) or `ROM/TINETITC.bin` (Italian) as an 8K cartridge (non-banked, >6000) on a loader that takes one (FinalGROM99, a flash cartridge, an emulator). With the 32K expansion and the firmware of this branch it appears as TI-NET TERM in the menu. Usage, keys and the `DSK1.BBSLIST` format: `docs/BBS-terminal.md`.
 
 ## Building
 
 - **DSR:** `xas99.py -R -b TI/APEDSKPR.a99 -o APEDSKPR.bin` ([xdt99](https://github.com/endlos99/xdt99)), then pad with zeros to 8192 bytes. Assembled the same way, the original source is byte-identical to `APEDSK99.DSR`. The DSR currently uses all but 134 bytes of its space.
 - **Sketch:** Arduino IDE, board Uno. It uses about 98.5% of flash.
-- **TI-NET TERM:** `ROM/build.sh` (xdt99's `xas99.py`; `XDT99` = its folder): font, assembly, padding to 8K.
+- **TI-NET TERM:** `ROM/build.sh` (xdt99's `xas99.py`; `XDT99` = its folder): font, assembly of both languages, padding to 8K.
 - **PC harness:** `harness/run.sh` compiles the sketch with g++ against mock hardware (DSR RAM, SD card folder, Ethernet on host sockets, FTP folder, fixed NTP time) and tests the terminal commands against `harness/fake_bbs.py`, a fake telnet BBS. The hardware itself (timing, SPI, the W5100) is not simulated.
 
 ## Credits

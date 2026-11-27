@@ -46,7 +46,12 @@ Facts that matter for the program:
 
 ## The terminal program: TI-NET TERM 0.2
 
-An 8K cartridge ROM (`ROM/TINETC.bin`, source `ROM/tinet.a99`, font `ROM/font.py`). It needs the 32K memory expansion and the firmware of this branch, and works with either APEDSK99 DSR.
+An 8K cartridge ROM, in two languages from the same source (`ROM/tinet.a99`, texts in `ROM/text_en.a99` and `ROM/text_it.a99`, font `ROM/font.py`):
+
+- `ROM/TINETC.bin`: English;
+- `ROM/TINETITC.bin`: Italian.
+
+It needs the 32K memory expansion and the firmware of this branch, and works with either APEDSK99 DSR. The screens below are named as in the English ROM.
 
 ### Using it
 
@@ -56,7 +61,7 @@ An 8K cartridge ROM (`ROM/TINETC.bin`, source `ROM/tinet.a99`, font `ROM/font.py
    - FCTN-8 saves the address typed in the field as a new entry (it asks the name, up to 14 characters).
    - FCTN-3 deletes an entry (it asks which one).
    - FCTN-9 opens the options, FCTN-= goes back to the title screen.
-4. During a session: what you type goes to the BBS. FCTN-9 opens the menu on the status row: R hangs up and goes back to the address book, any other key carries on. When the BBS hangs up, the status row says so and any key goes back.
+4. During a session: what you type goes to the BBS. FCTN-9 opens the menu on the status row: H hangs up and goes back to the address book (R in the Italian ROM), any other key carries on. When the BBS hangs up, the status row says so and any key goes back.
 
 Keys in a session:
 
@@ -111,7 +116,7 @@ Measured in the emulator: about 46,000 CPU cycles for a packet of 31 bytes (abou
 ## Testing
 
 - `harness/cosim/`: **co-simulation**. The real sketch runs as a process (`firmware_server`) and is the firmware of an APEDSK99 card in an emulated TI-99/4A ([ti99-headless](https://github.com/fablug-wq/ti99-headless) 0.2.0 or later: js99er with the real console ROM and GROM). Every word the TI writes into >4000–>5FFF runs `loop()` once, as the GAL signals on the hardware (A15 = 0: once per word), and the TI waits meanwhile. So the real DSR (disks, CALLs) and the terminal commands run as on the machine, with the SD card and FTP server as folders and the network through the host. `test_cosim.py`: TI BASIC SAVE/OLD; `NETTEST` in Extended BASIC against the fake BBS.
-- `ROM/test_rom.py`: TI-NET TERM in the co-simulation, 10 tests: the address book screen; a session (negotiation, ANSI and CP437 on screen, the ANSI test page with `ESC[6n`, the codes the keys send, FCTN-9 R); 5000 bytes; the BBS hanging up; a refused connection; local echo AUTO with a BBS that stops and restarts echoing; a plain TCP service (the fake BBS in raw mode) with ENTER = CR LF and echo AUTO, then off; saving, reading back, choosing and deleting entries in `DSK1.BBSLIST`; the options (palette, status row → NAWS 40×24, kept on disk); the firmware of `main` (the ROM says it lacks the commands). `ROM/screenshots.py` makes `docs/screenshots/`.
+- `ROM/test_rom.py`: TI-NET TERM in the co-simulation, 11 tests (the Italian ROM in one of them): the address book screen; a session (negotiation, ANSI and CP437 on screen, the ANSI test page with `ESC[6n`, the codes the keys send, FCTN-9 R); 5000 bytes; the BBS hanging up; a refused connection; local echo AUTO with a BBS that stops and restarts echoing; a plain TCP service (the fake BBS in raw mode) with ENTER = CR LF and echo AUTO, then off; saving, reading back, choosing and deleting entries in `DSK1.BBSLIST`; the options (palette, status row → NAWS 40×24, kept on disk); the firmware of `main` (the ROM says it lacks the commands). `ROM/screenshots.py` makes `docs/screenshots/`.
 
   ```
   TI99HEADLESS=/path/to/ti99-headless XDT99=/path/to/xdt99 python3 ROM/test_rom.py -v

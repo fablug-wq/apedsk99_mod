@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.join(REPO, "harness", "cosim"))
 import test_cosim as tc                                     # noqa: E402
 
 th = tc.th
-ROM = os.path.join(HERE, "TINETC.bin")
+ROM = os.path.join(HERE, "TINETC.bin")                      # English
+ROM_IT = os.path.join(HERE, "TINETITC.bin")                 # Italian
 HOST = "127.0.0.1:%d" % tc.BBS_PORT
 
 
@@ -50,7 +51,7 @@ class TestRom(unittest.TestCase):
     def machine(self, card=None):
         m = th.Machine(ROM, disk="NONE", cards=[card or self.rig.card()])
         m.menu(2)
-        wait_for(m, "RUBRICA", 300)
+        wait_for(m, "ADDRESS BOOK", 300)
         return m
 
     def connect(self, m):
@@ -61,7 +62,7 @@ class TestRom(unittest.TestCase):
         with self.machine() as m:
             r = rows(m)
             self.assertEqual(r[0].strip(), "TI-NET TERM 0.2")
-            self.assertIn("OPPURE SCRIVI HOST[:PORTA]", r[13])
+            self.assertIn("OR TYPE HOST[:PORT]", r[13])
             self.assertEqual(m.vregs()[1] & 0x18, 0x10)                 # text mode
             m.type("abc{LEFT}")                                       # FCTN-S deletes
             self.assertIn(">ab", rows(m)[14])
@@ -113,9 +114,9 @@ class TestRom(unittest.TestCase):
 
             # FCTN-9, R: hang up, back to the address book
             m.press("FCTN", "9")
-            wait_for(m, "R=RIAGGANCIA")
-            m.type("R")
-            wait_for(m, "RUBRICA")
+            wait_for(m, "H=HANG UP")
+            m.type("H")
+            wait_for(m, "ADDRESS BOOK")
 
     def test_local_echo(self):
         """AUTO: local echo while the server does not echo (WONT ECHO), off again after WILL ECHO"""
@@ -136,25 +137,25 @@ class TestRom(unittest.TestCase):
         """a service that is not a BBS (no telnet, no echo), ENTER = CR LF, echo off"""
         with self.machine() as m:
             m.press("FCTN", "9")
-            wait_for(m, "OPZIONI")
+            wait_for(m, "OPTIONS")
             m.type("4")
             self.assertIn("CR LF", rows(m)[6])
             m.press("FCTN", "9")
-            wait_for(m, "RUBRICA")
+            wait_for(m, "ADDRESS BOOK")
             m.type("127.0.0.1:%d\r" % tc.RAW_PORT)
             wait_for(m, "RAW READY")
             m.type("HI\r")
             wait_for(m, "GOT 48 49 0D 0A")
             self.assertIn("HI", rows(m))                               # AUTO: local echo
             m.press("FCTN", "9")
-            m.type("R")
-            wait_for(m, "RUBRICA")
+            m.type("H")
+            wait_for(m, "ADDRESS BOOK")
             m.press("FCTN", "9")
-            wait_for(m, "OPZIONI")
+            wait_for(m, "OPTIONS")
             m.type("33")                                               # AUTO -> SI -> NO
             self.assertIn("NO", rows(m)[5])
             m.press("FCTN", "9")
-            wait_for(m, "RUBRICA")
+            wait_for(m, "ADDRESS BOOK")
             m.type("127.0.0.1:%d\r" % tc.RAW_PORT)
             wait_for(m, "RAW READY")
             m.type("XY\r")
@@ -174,22 +175,22 @@ class TestRom(unittest.TestCase):
         with self.machine() as m:
             self.connect(m)
             m.type("QUIT\r")
-            wait_for(m, "Chiusa dalla BBS")
+            wait_for(m, "Closed by the BBS")
             m.type(" ")
-            wait_for(m, "RUBRICA")
+            wait_for(m, "ADDRESS BOOK")
 
     def test_connection_refused(self):
         with self.machine() as m:
             m.type("127.0.0.1:1\r")
-            wait_for(m, "Connessione non riuscita")
+            wait_for(m, "Connection failed")
 
     def test_address_book(self):
         with self.machine() as m:
             m.type(HOST)
             m.press("FCTN", "8")
-            wait_for(m, "NOME:")
+            wait_for(m, "NAME:")
             m.type("Finta\r")
-            wait_for(m, "Salvato in DSK1.BBSLIST")
+            wait_for(m, "Saved in DSK1.BBSLIST")
             self.assertEqual(rows(m)[4][1:8], "1 Finta")
             self.assertIn(HOST, rows(m)[4])
         with open(os.path.join(self.rig.sd, "DISKS", "_APEDSK1.DSK"), "rb") as f:
@@ -205,32 +206,44 @@ class TestRom(unittest.TestCase):
             m.type("\r")
             wait_for(m, "READY")
             m.press("FCTN", "9")
-            m.type("R")
-            wait_for(m, "RUBRICA")
+            m.type("H")
+            wait_for(m, "ADDRESS BOOK")
             m.press("FCTN", "3")
-            wait_for(m, "Cancello quale")
+            wait_for(m, "Delete which")
             m.type("1")
-            wait_for(m, "Voce cancellata")
+            wait_for(m, "Entry deleted")
             self.assertEqual(rows(m)[4], "")
 
     def test_options(self):
         with self.machine() as m:
             m.press("FCTN", "9")
-            wait_for(m, "OPZIONI")
-            self.assertIn("BIANCO SU BLU", rows(m)[3])
-            self.assertIn("SI", rows(m)[4])
+            wait_for(m, "OPTIONS")
+            self.assertIn("WHITE ON BLUE", rows(m)[3])
+            self.assertIn("YES", rows(m)[4])
             m.type("1")
-            self.assertIn("VERDE SU NERO", rows(m)[3])
+            self.assertIn("GREEN ON BLACK", rows(m)[3])
             self.assertEqual(m.vregs()[7], 0x31)
             m.type("2")
             self.assertIn("NO", rows(m)[4])
             m.press("FCTN", "9")
-            wait_for(m, "RUBRICA")
+            wait_for(m, "ADDRESS BOOK")
             self.connect(m)
             self.assertEqual(rows(m)[3], "NAWS 40x24")
             self.assertNotIn("F9 MENU", rows(m)[23])
         with self.machine() as m:                                       # kept in DSK1.BBSLIST
             self.assertEqual(m.vregs()[7], 0x31)
+
+    def test_italian(self):
+        """the Italian ROM (-D ITALIAN): same code, other texts, R hangs up"""
+        with th.Machine(ROM_IT, disk="NONE", cards=[self.rig.card()]) as m:
+            m.menu(2)
+            wait_for(m, "RUBRICA", 300)
+            self.assertIn("OPPURE SCRIVI HOST[:PORTA]", rows(m)[13])
+            self.connect(m)
+            m.press("FCTN", "9")
+            wait_for(m, "R=RIAGGANCIA")
+            m.type("R")
+            wait_for(m, "RUBRICA")
 
     def test_old_firmware(self):
         """the firmware of main (no terminal commands): the ROM says so"""
@@ -248,7 +261,7 @@ class TestRom(unittest.TestCase):
             opts = dict(opts, server=server)
             with th.Machine(ROM, disk="NONE", cards=[(path, opts)]) as m:
                 m.menu(2)
-                wait_for(m, "non ha i comandi", 300)
+                wait_for(m, "has no terminal", 300)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,97 @@
+* text_en.a99 - TI-NET TERM texts in English (the default)
+HANGK  EQU  'H'                       * the key that hangs up in the session menu
+MTITLE TEXT ' TI-NET TERM 0.2'
+       BYTE 0
+MTITLO TEXT ' TI-NET TERM 0.2 '
+       BYTE >FA
+       TEXT ' OPTIONS'
+       BYTE 0
+MBOOK  TEXT 'ADDRESS BOOK'
+       BYTE 0
+MADDR  TEXT 'OR TYPE HOST[:PORT]'
+       BYTE 0
+MKEYS1 TEXT 'FCTN-E/X CHOOSE  ENTER CALL  F8 SAVE'
+       BYTE 0
+MKEYS2 TEXT 'F3 DELETE  F9 OPTIONS  F= QUIT'
+       BYTE 0
+MKEYS3 TEXT '1-4 CHANGE  F9 BACK TO ADDRESS BOOK'
+       BYTE 0
+MKEYS4 TEXT 'ANY KEY TO GO BACK TO THE MENU'
+       BYTE 0
+MOPT1  TEXT '1  Palette ...........'
+       BYTE 0
+MOPT2  TEXT '2  Status row ........'
+       BYTE 0
+MOPT6  TEXT '3  Local echo ........'
+       BYTE 0
+MOPT7  TEXT '4  ENTER sends .......'
+       BYTE 0
+MOPT3  TEXT '   Columns ........... 40'
+       BYTE 0
+MOPT4  TEXT '(80 with the F18A: next version)'
+       BYTE 0
+MOPT5  TEXT 'APEDSK99 firmware: terminal OK'
+       BYTE 0
+MFWT   TEXT 'The terminal cannot start:'
+       BYTE 0
+MFWOLD TEXT 'this APEDSK99 firmware has no terminal'
+       BYTE 0
+MNOAPE TEXT 'APEDSK99 does not answer.'
+       BYTE 0
+MFW2   TEXT 'It needs the firmware of the branch'
+       BYTE 0
+MFW3   TEXT 'bbs-terminal (commands >70->73).'
+       BYTE 0
+MCONN  TEXT 'Connecting to '
+       BYTE 0
+MDOTS  TEXT '...'
+       BYTE 0
+MNOCON TEXT 'Connection failed.'
+       BYTE 0
+MNAME  TEXT 'NAME: '
+       BYTE 0
+MFULL  TEXT 'Address book full (9 entries).'
+       BYTE 0
+MSAVED TEXT 'Saved in DSK1.BBSLIST.'
+       BYTE 0
+MDSKER TEXT 'Error on DSK1.BBSLIST.'
+       BYTE 0
+MEMPTY BYTE 0
+MDELQ  TEXT 'Delete which entry (1-9)?'
+       BYTE 0
+MDELD  TEXT 'Entry deleted.'
+       BYTE 0
+MCLOSD TEXT ' Closed by the BBS. Any key to leave.'
+       BYTE 0
+MBAD   TEXT ' Bad answer from the firmware.'
+       BYTE 0
+MMENU  TEXT ' H=HANG UP  ANY OTHER KEY=CONTINUE'
+       BYTE 0
+MANSI  TEXT 'ANSI 40x'
+MROWS  TEXT '23'
+       BYTE 0
+MF9    TEXT 'F9 MENU'
+       BYTE 0
+MYES   TEXT 'YES           '
+       BYTE 0
+MNO    TEXT 'NO            '
+       BYTE 0
+MAUTO  TEXT 'AUTO          '
+       BYTE 0
+MCR    TEXT 'CR            '
+       BYTE 0
+MCRLF  TEXT 'CR LF         '
+       BYTE 0
+       EVEN
+YNNAM  DATA MNO,MYES
+ECHNAM DATA MAUTO,MYES,MNO
+CRNAM  DATA MCR,MCRLF
+PALNAM DATA PNM0,PNM1,PNM2
+PNM0   TEXT 'WHITE ON BLUE '
+       BYTE 0
+PNM1   TEXT 'GREEN ON BLACK'
+       BYTE 0
+PNM2   TEXT 'BLACK ON CYAN '
+       BYTE 0
+       EVEN
+
