@@ -1,7 +1,9 @@
-* text_it.a99 - TI-NET TERM: address book and options texts in Italian (assembled with -D ITALIAN)
-MTITLE TEXT ' TI-NET TERM 0.3'
+* text_it.a99 - APEDSK TERMINAL: testi di rubrica e opzioni in italiano (-D ITALIAN)
+MTITLE TEXT ' APEDSK TERMINAL 1.0'
        BYTE 0
-MTITLO TEXT ' TI-NET TERM 0.3 '
+MQUIT  TEXT 'F= ESCI'
+       BYTE 0
+MTITLO TEXT ' APEDSK TERMINAL 1.0 '
        BYTE >FA
        TEXT ' OPZIONI'
        BYTE 0
@@ -11,9 +13,9 @@ MADDR  TEXT 'OPPURE SCRIVI HOST[:PORTA]'
        BYTE 0
 MKEYS1 TEXT 'FCTN-E/X SCEGLI ENTER CHIAMA F8 NUOVA'
        BYTE 0
-MKEYS2 TEXT 'F3 CANCELLA F6 SALVA F9 OPZIONI F= ESCI'
+MKEYS2 TEXT 'F3 CANC. F5 CARICA F6 SALVA F9 OPZIONI'
        BYTE 0
-MKEYS3 TEXT '1-5 CAMBIA  F6 SALVA  F9 RUBRICA'
+MKEYS3 TEXT '1-6 CAMBIA  F9 RUBRICA'
        BYTE 0
 MKEYS4 TEXT 'UN TASTO PER TORNARE AL MENU'
        BYTE 0
@@ -21,15 +23,19 @@ MOPT1  TEXT '1  Palette ...........'
        BYTE 0
 MOPT2  TEXT '2  Riga di stato .....'
        BYTE 0
-MOPT6  TEXT '3  Eco locale ........'
+MOPT3  TEXT '3  Eco locale ........'
        BYTE 0
-MOPT7  TEXT '4  ENTER manda .......'
+MOPT4  TEXT '4  ENTER manda .......'
        BYTE 0
-MOPT8  TEXT '5  Colonne ...........'
+MOPT5  TEXT '5  Colonne ...........'
        BYTE 0
-MOPT4  TEXT '(80 colonne: con F18A, in futuro)'
+MOPT6  TEXT '6  Colori ANSI .......'
        BYTE 0
-MOPT5  TEXT 'Firmware APEDSK99: terminale OK'
+MF18Y  TEXT 'F18A: 80 colonne e colori.'
+       BYTE 0
+MF18N  TEXT 'Niente F18A: 40 o 64 colonne, no colori.'
+       BYTE 0
+MFWOK  TEXT 'Firmware APEDSK99: terminale OK'
        BYTE 0
 MFWT   TEXT 'Il terminale non puo'' partire:'
        BYTE 0
@@ -45,27 +51,32 @@ MCONN  TEXT 'Connessione a '
        BYTE 0
 MDOTS  TEXT '...'
        BYTE 0
-MNOCON TEXT 'Connessione non riuscita.'
+MNOCON TEXT 'Connessione fallita.'
        BYTE 0
-MNAME  TEXT 'NOME: '
+MNAME  TEXT 'NOME:'
+       BYTE 0
+MPORT  TEXT 'PORTA:'
+       BYTE 0
+MPDEF  TEXT '(default=23)'
+       BYTE 0
+MLOAD  TEXT 'FILE:'
+       BYTE 0
+MSAVE  TEXT 'FILE:'
        BYTE 0
 MFULL  TEXT 'Rubrica piena (9 voci).'
        BYTE 0
-MADDED TEXT 'Aggiunta. F6 la salva su disco.'
+MADDED TEXT 'Aggiunta. F6 salva il file.'
        BYTE 0
-MCONFB TEXT 'Scrivo la rubrica su DSK1.BBSLIST? S/N'
+MLOADD TEXT 'Caricato.'
        BYTE 0
-MCONFO TEXT 'Scrivo le opzioni su DSK1.BBSLIST? S/N'
+MSAVED TEXT 'Salvato.'
        BYTE 0
-YESK   EQU  'S'
-MSAVED TEXT 'Salvato in DSK1.BBSLIST.'
-       BYTE 0
-MDSKER TEXT 'Errore su DSK1.BBSLIST.'
+MDSKER TEXT 'Errore del disco.'
        BYTE 0
 MEMPTY BYTE 0
-MDELQ  TEXT 'Cancello quale voce (1-9)?'
+MDELQ  TEXT 'Cancellare quale voce (1-9)?'
        BYTE 0
-MDELD  TEXT 'Voce cancellata. F6 salva su disco.'
+MDELD  TEXT 'Voce cancellata. F6 salva il file.'
        BYTE 0
 MYES   TEXT 'SI            '
        BYTE 0
@@ -81,11 +92,13 @@ MC40   TEXT '40            '
        BYTE 0
 MC64   TEXT '64            '
        BYTE 0
+MC80   TEXT '80 (F18A)     '
+       BYTE 0
        EVEN
 YNNAM  DATA MNO,MYES
 ECHNAM DATA MAUTO,MYES,MNO
 CRNAM  DATA MCR,MCRLF
-COLNAM DATA MC40,MC64
+COLNAM DATA MC40,MC64,MC80
 PALNAM DATA PNM0,PNM1,PNM2
 PNM0   TEXT 'BIANCO SU BLU '
        BYTE 0
@@ -94,4 +107,3 @@ PNM1   TEXT 'VERDE SU NERO '
 PNM2   TEXT 'NERO SU CIANO '
        BYTE 0
        EVEN
-

@@ -1,7 +1,9 @@
-* text_en.a99 - TI-NET TERM: address book and options texts in English (the default)
-MTITLE TEXT ' TI-NET TERM 0.3'
+* text_en.a99 - APEDSK TERMINAL: address book and options texts in English (the default)
+MTITLE TEXT ' APEDSK TERMINAL 1.0'
        BYTE 0
-MTITLO TEXT ' TI-NET TERM 0.3 '
+MQUIT  TEXT 'F= QUIT'
+       BYTE 0
+MTITLO TEXT ' APEDSK TERMINAL 1.0 '
        BYTE >FA
        TEXT ' OPTIONS'
        BYTE 0
@@ -11,9 +13,9 @@ MADDR  TEXT 'OR TYPE HOST[:PORT]'
        BYTE 0
 MKEYS1 TEXT 'FCTN-E/X CHOOSE  ENTER CALL  F8 ADD'
        BYTE 0
-MKEYS2 TEXT 'F3 DELETE F6 SAVE F9 OPTIONS F= QUIT'
+MKEYS2 TEXT 'F3 DELETE F5 LOAD F6 SAVE F9 OPTIONS'
        BYTE 0
-MKEYS3 TEXT '1-5 CHANGE  F6 SAVE  F9 ADDRESS BOOK'
+MKEYS3 TEXT '1-6 CHANGE  F9 ADDRESS BOOK'
        BYTE 0
 MKEYS4 TEXT 'ANY KEY TO GO BACK TO THE MENU'
        BYTE 0
@@ -21,15 +23,19 @@ MOPT1  TEXT '1  Palette ...........'
        BYTE 0
 MOPT2  TEXT '2  Status row ........'
        BYTE 0
-MOPT6  TEXT '3  Local echo ........'
+MOPT3  TEXT '3  Local echo ........'
        BYTE 0
-MOPT7  TEXT '4  ENTER sends .......'
+MOPT4  TEXT '4  ENTER sends .......'
        BYTE 0
-MOPT8  TEXT '5  Columns ...........'
+MOPT5  TEXT '5  Columns ...........'
        BYTE 0
-MOPT4  TEXT '(80 columns: with the F18A, later)'
+MOPT6  TEXT '6  ANSI colours ......'
        BYTE 0
-MOPT5  TEXT 'APEDSK99 firmware: terminal OK'
+MF18Y  TEXT 'F18A: 80 columns and colours.'
+       BYTE 0
+MF18N  TEXT 'No F18A: 40 or 64 columns, no colours.'
+       BYTE 0
+MFWOK  TEXT 'APEDSK99 firmware: terminal OK'
        BYTE 0
 MFWT   TEXT 'The terminal cannot start:'
        BYTE 0
@@ -47,25 +53,30 @@ MDOTS  TEXT '...'
        BYTE 0
 MNOCON TEXT 'Connection failed.'
        BYTE 0
-MNAME  TEXT 'NAME: '
+MNAME  TEXT 'NAME:'
+       BYTE 0
+MPORT  TEXT 'PORT:'
+       BYTE 0
+MPDEF  TEXT '(default=23)'
+       BYTE 0
+MLOAD  TEXT 'LOAD:'
+       BYTE 0
+MSAVE  TEXT 'SAVE:'
        BYTE 0
 MFULL  TEXT 'Address book full (9 entries).'
        BYTE 0
-MADDED TEXT 'Added. F6 writes it to disk.'
+MADDED TEXT 'Added. F6 saves the file.'
        BYTE 0
-MCONFB TEXT 'Write address book to DSK1.BBSLIST? Y/N'
+MLOADD TEXT 'Loaded.'
        BYTE 0
-MCONFO TEXT 'Write options to DSK1.BBSLIST? Y/N'
+MSAVED TEXT 'Saved.'
        BYTE 0
-YESK   EQU  'Y'
-MSAVED TEXT 'Saved in DSK1.BBSLIST.'
-       BYTE 0
-MDSKER TEXT 'Error on DSK1.BBSLIST.'
+MDSKER TEXT 'Disk error.'
        BYTE 0
 MEMPTY BYTE 0
 MDELQ  TEXT 'Delete which entry (1-9)?'
        BYTE 0
-MDELD  TEXT 'Entry deleted. F6 writes it to disk.'
+MDELD  TEXT 'Entry deleted. F6 saves the file.'
        BYTE 0
 MYES   TEXT 'YES           '
        BYTE 0
@@ -81,11 +92,13 @@ MC40   TEXT '40            '
        BYTE 0
 MC64   TEXT '64            '
        BYTE 0
+MC80   TEXT '80 (F18A)     '
+       BYTE 0
        EVEN
 YNNAM  DATA MNO,MYES
 ECHNAM DATA MAUTO,MYES,MNO
 CRNAM  DATA MCR,MCRLF
-COLNAM DATA MC40,MC64
+COLNAM DATA MC40,MC64,MC80
 PALNAM DATA PNM0,PNM1,PNM2
 PNM0   TEXT 'WHITE ON BLUE '
        BYTE 0
@@ -94,4 +107,3 @@ PNM1   TEXT 'GREEN ON BLACK'
 PNM2   TEXT 'BLACK ON CYAN '
        BYTE 0
        EVEN
-

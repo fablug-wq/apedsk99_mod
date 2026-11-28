@@ -60,7 +60,7 @@ class Rig:
                 f.write(blank_dsk("APEDSK%d" % n))
         shutil.copy(os.path.join(REPO, "SD", "DISKS", "NETTEST.DSK"), os.path.join(self.sd, "DISKS"))
         fake = os.path.join(HARNESS, "fake_bbs.py")
-        self.bbs = subprocess.Popen([sys.executable, fake, str(BBS_PORT)],
+        self.bbs = subprocess.Popen([sys.executable, fake, str(BBS_PORT)], cwd=self.dir,
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.raw = subprocess.Popen([sys.executable, fake, str(RAW_PORT), "127.0.0.1", "raw"],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

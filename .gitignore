@@ -1,3 +1,4 @@
 harness/cosim/firmware_server
 __pycache__/
-ROM/tinet.lst
+ROM/apeterm.lst
+ROM/APETERMI8.bin

@@ -1,9 +1,30 @@
-* term_en.a99 - TI-NET TERM: the terminal's texts in English (the default)
+* term_en.a99 - APEDSK TERMINAL: the terminal's texts in English (the default)
 HANGK  EQU  'H'                       * the key that hangs up in the session menu
+YESK   EQU  'Y'
 MCLOSD TEXT ' Closed by the BBS. Any key to leave.'
        BYTE 0
 MBAD   TEXT ' Bad answer from the firmware.'
        BYTE 0
-MMENU  TEXT ' H=HANG UP  ANY OTHER KEY=CONTINUE'
+MMENU  TEXT ' H=HANG UP  D=DOWNLOAD  U=UPLOAD'
+       BYTE 0
+MXDN   TEXT ' DOWNLOAD TO:'
+       BYTE 0
+MXUP   TEXT ' UPLOAD FILE:'
+       BYTE 0
+MXREP  TEXT ' The file is there. Replace it? Y/N'
+       BYTE 0
+MXRUN  TEXT ' XMODEM  F9=STOP   BLOCKS:'
+       BYTE 0
+MXOK   TEXT ' Done. Any key.     BLOCKS:'
+       BYTE 0
+MXFAIL TEXT ' Failed. Any key.   BLOCKS:'
+       BYTE 0
+MXCAN  TEXT ' Cancelled. Any key.'
+       BYTE 0
+MXDSK  TEXT ' Disk error. Any key.'
+       BYTE 0
+MXNF   TEXT ' File not found. Any key.'
+       BYTE 0
+MXBADN TEXT ' The name: DSKn.NAME. Any key.'
        BYTE 0
        EVEN

@@ -1,0 +1,455 @@
+********************************************************************************
+* APEDSK TERMINAL 1.0 - telnet / BBS terminal for the TI-99/4A with APEDSK99
+*
+* 32K cartridge ROM at >6000, four banks of 8K (non-inverted: a write to
+* >6000 + 2 * n selects bank n). Needs the 32K memory expansion and the
+* APEDSK99 firmware with the network terminal commands (>70 CONNECT, >71 SEND,
+* >72 RECV, >73 CLOSE: see docs/BBS-terminal.md). Works with any APEDSK99 DSR.
+*
+* - 40 columns (text mode), 64 columns (bitmap mode, 4 x 8 cells) or, with an
+*   F18A, 80 x 25 (80-column text mode, 30 rows, colour per position:
+*   the 16 ANSI colours or two colours)
+* - telnet: DO to WILL ECHO / SGA, WILL TTYPE ("ANSI"), WILL NAWS, BINARY
+*   during file transfers, WONT / DONT to the rest
+* - ANSI: cursor A B C D G H f d s u, erase J K, n (6n), SGR: inverse, and the
+*   colours with the F18A
+* - XMODEM (CRC or checksum, 128 / 1K blocks) download and upload; TIFILES
+*   files are written and read sector by sector through the disk DSR's
+*   subprograms >14 / >15, so files of any type keep their type
+* - address book and options in a file (LOAD / SAVE, DSK1.APENET by default,
+*   DIS/VAR 80): "#P<n>S<n>E<n>N<n>C<n>A<n>" then one "name|host[:port]" each
+*
+* Source: apeterm.a99 (this file: shared by the banks), menu.a99 (bank 0:
+* address book, options, the file), term.a99 + xmodem.a99 (bank 1: the
+* terminal), bank 2: the 64-column font (copied to the 32K).
+* Texts: text_en / term_en (default) or text_it / term_it (-D ITALIAN).
+* Build: build.sh -> APETERM8.bin (English); build.sh it -> APETERMI8.bin
+********************************************************************************
+       DEF  START
+
+* --- hardware
+VDPWD  EQU  >8C00
+VDPWA  EQU  >8C02
+VDPRD  EQU  >8800
+VDPSTA EQU  >8802
+GRMWA  EQU  >9C02
+GRMRD  EQU  >9800
+KMODE  EQU  >8374
+KCODE  EQU  >8375
+GSTAT  EQU  >837C
+GPLWS  EQU  >83E0
+WS     EQU  >8300
+SUBINF EQU  >8320                     * info block of the subprograms >14 / >15
+
+* --- APEDSK99 (fixed in the firmware)
+CALLST EQU  >5FC6
+CALLBF EQU  >5FC8
+ACOMND EQU  >5FE8
+WCOMND EQU  >5FF8
+
+* --- VDP memory (free in the three screen modes; disk buffers from >37D8)
+PATTAB EQU  >0800                     * text mode patterns
+PAT80  EQU  >2000                     * 80 columns: patterns
+ATR80  EQU  >2800                     * 80 columns: colour of each position
+PAB    EQU  >3200
+VBUF   EQU  >3240                     * record buffer, 256 bytes
+FNVDP  EQU  >3340                     * file name for the subprograms (10)
+SECVDP EQU  >3400                     * one sector for the subprograms
+
+* --- variables in the 32K (low memory)
+V      EQU  >2000
+ROW    EQU  V+0
+COL    EQU  V+2
+SROW   EQU  V+4
+SCOL   EQU  V+6
+TST    EQU  V+8
+TVERB  EQU  V+10
+EST    EQU  V+12
+NP     EQU  V+14
+PRIV   EQU  V+16
+PAR    EQU  V+18
+SBN    EQU  V+34
+SBBUF  EQU  V+36
+TXN    EQU  V+44
+TXBUF  EQU  V+46
+RXN    EQU  V+110
+RXBUF  EQU  V+112
+CURON  EQU  V+144
+CURAD  EQU  V+146
+CURCH  EQU  V+148
+ROWS   EQU  V+150
+STATL  EQU  V+152
+PAL    EQU  V+154
+FRM    EQU  V+156
+SECS   EQU  V+158
+FLEN   EQU  V+160
+FIELD  EQU  V+162
+BOOKN  EQU  V+194
+FWOK   EQU  V+196
+NAMBUF EQU  V+198
+WSSAV  EQU  V+206
+DLFND  EQU  V+238
+DLOFF  EQU  V+240
+RECLEN EQU  V+260
+BOOK   EQU  V+262
+ESIZE  EQU  48
+NSIZE  EQU  16
+BKSEL  EQU  V+>2F0
+ECHOM  EQU  V+>2F2
+CRLF   EQU  V+>2F4
+SRVECH EQU  V+>2F6
+COLS   EQU  V+>2F8
+ROWB   EQU  V+>2FA
+FILLB  EQU  V+>2FC
+COLM   EQU  V+>2FE
+SCRBUF EQU  V+>300                    * 256 bytes
+PALV   EQU  V+>400
+STP    EQU  V+>402
+SANSI  EQU  V+>404
+CURR   EQU  V+>406
+CURC   EQU  V+>408
+BTMP   EQU  V+>40A
+TSTR   EQU  V+>412
+COLR   EQU  V+>41A                    * option: ANSI colours (F18A)
+F18    EQU  V+>41C                    * an F18A answered
+SROWN  EQU  V+>41E                    * the status row
+CATTR  EQU  V+>420                    * 80 columns: the colour byte being written
+DEFATR EQU  V+>422
+INVM   EQU  V+>424                    * SGR 7
+SGRFG  EQU  V+>426                    * -1: default
+SGRBG  EQU  V+>428
+SGRBLD EQU  V+>42A
+SVINV  EQU  V+>42C
+SVATR  EQU  V+>42E
+RXP    EQU  V+>430                    * next byte of RXBUF (transfers)
+TIMER  EQU  V+>432                    * frames, counted down
+ATDEP  EQU  V+>434
+RECBUF EQU  V+>700                    * 128 bytes
+NAME   EQU  V+>800                    * the line editor's buffer, 40
+FNAME  EQU  V+>830                    * the address book file: length, name (40)
+PNAME  EQU  V+>860                    * the name in the PAB: length, name (40)
+XNAME  EQU  V+>890                    * the transfer's file: length, name (40)
+XV     EQU  V+>8C0                    * XMODEM variables (xmodem.a99)
+STACK  EQU  >3FF0
+
+* --- high memory
+FONT64 EQU  >A000                     * 64-column font, copied from bank 2
+XBUF   EQU  >A800                     * an XMODEM block (1024)
+SECBUF EQU  >AC00                     * a sector (256)
+TIHDR  EQU  >AD00                     * a TIFILES header (128)
+
+* --- keys (KSCAN mode 5)
+K.AID  EQU  1
+K.CLR  EQU  2
+K.DEL  EQU  3
+K.QUIT EQU  5
+K.REDO EQU  6
+K.ERAS EQU  7
+K.LEFT EQU  8
+K.RGHT EQU  9
+K.DOWN EQU  10
+K.UP   EQU  11
+K.PROC EQU  12
+K.ENTR EQU  13
+K.BEGN EQU  14
+K.BACK EQU  15
+
+********************************************************************************
+* shared by the banks: header, start, bank switching, VDP, keyboard, DSRLNK
+********************************************************************************
+       BANK ALL,>6000
+       BYTE >AA,>01,>00,>00
+       DATA 0
+       DATA PROGS
+       DATA 0
+       DATA 0
+PROGS  DATA 0
+       DATA START
+       BYTE 15
+       TEXT 'APEDSK TERMINAL'
+       EVEN
+
+START  LIMI 0
+       LWPI WS
+       CLR  @>6000                   * bank 0
+       B    @START0
+
+* to the terminal (bank 1) and back to the address book (bank 0)
+GOTERM CLR  @>6002
+       B    @TERM
+GOBOOK CLR  @>6000
+       B    @BOOKSC
+
+* R2 bytes from address R0 of bank R3 (its switch address) to R1, back to bank R4
+BKCOPY CLR  *R3
+BC1    MOV  *R0+,*R1+
+       DECT R2
+       JGT  BC1
+       CLR  *R4
+       B    *R11
+
+********************************************************************************
+* APEDSK99 network commands
+********************************************************************************
+* R0 = command in the high byte -> R0 = CALLST
+NETCMD MOVB R0,@ACOMND
+       MOVB @CALLST,R0
+       SRL  R0,8
+       B    *R11
+
+********************************************************************************
+* keyboard: R0 = the key (KSCAN mode 5), 0 if none
+********************************************************************************
+KEY    LI   R0,>0500
+       MOVB R0,@KMODE
+       LWPI GPLWS
+       BL   @>000E
+       LWPI WS
+       CLR  R0
+       MOVB @GSTAT,R1
+       ANDI R1,>2000
+       JEQ  KY9
+       MOVB @KCODE,R0
+       SRL  R0,8
+KY9    B    *R11
+
+********************************************************************************
+* screen helpers
+********************************************************************************
+VWA    ORI  R0,>4000
+VRA    SWPB R0
+       MOVB R0,@VDPWA
+       SWPB R0
+       MOVB R0,@VDPWA
+       ANDI R0,>3FFF
+       B    *R11
+VWTR   SWPB R0
+       MOVB R0,@VDPWA
+       SWPB R0
+       ORI  R0,>8000
+       MOVB R0,@VDPWA
+       B    *R11
+* R0 address, R1 byte (high)
+VSBW   MOV  R11,R8
+       BL   @VWA
+       MOVB R1,@VDPWD
+       B    *R8
+* R0 address, R1 CPU address, R2 count
+VMBW   MOV  R11,R8
+       BL   @VWA
+VW1    MOVB *R1+,@VDPWD
+       DEC  R2
+       JNE  VW1
+       B    *R8
+VMBR   MOV  R11,R8
+       BL   @VRA
+VR1    MOVB @VDPRD,*R1+
+       DEC  R2
+       JNE  VR1
+       B    *R8
+* R0 address, R1 byte (high), R2 count
+VFILL  MOV  R11,R8
+       BL   @VWA
+VF1    MOVB R1,@VDPWD
+       DEC  R2
+       JNE  VF1
+       B    *R8
+* R0 address, R1 string ending with 0 -> R1 after the 0
+PRZ    MOV  R11,R8
+       BL   @VWA
+       JMP  PZ1
+PRZC   MOV  R11,R8
+PZ1    MOVB *R1+,R2
+       JEQ  PZ9
+       MOVB R2,@VDPWD
+       JMP  PZ1
+PZ9    B    *R8
+* R0 address, R1 string ending with 0, at most R2 characters
+PRN    MOV  R11,R8
+       BL   @VWA
+PN1    MOVB *R1+,R3
+       JEQ  PN9
+       MOVB R3,@VDPWD
+       DEC  R2
+       JNE  PN1
+PN9    B    *R8
+* R3 = list of (VDP address, string), >FFFF at the end
+DRAWL  DECT R10
+       MOV  R11,*R10
+DW1    MOV  *R3+,R0
+       CI   R0,>FFFF
+       JEQ  DW9
+       MOV  *R3+,R1
+       BL   @PRZ
+       JMP  DW1
+DW9    MOV  *R10+,R11
+       B    *R11
+CLS    CLR  R0
+       LI   R1,>2000
+       LI   R2,960
+       B    @VFILL
+
+********************************************************************************
+* files: the PAB at >3200 with the name in PNAME, the disk DSR's subprograms
+********************************************************************************
+* new PAB: R1 = opcode (high) and flags (low), R2 = record length
+PABNEW DECT R10
+       MOV  R11,*R10
+       MOV  R2,R4
+       LI   R0,PAB
+       BL   @VWA
+       MOVB R1,@VDPWD
+       SWPB R1
+       MOVB R1,@VDPWD
+       LI   R1,VBUF
+       MOVB R1,@VDPWD
+       SWPB R1
+       MOVB R1,@VDPWD
+       SWPB R4
+       MOVB R4,@VDPWD                * record length
+       CLR  R1
+       MOVB R1,@VDPWD                * character count
+       MOVB R1,@VDPWD                * record number
+       MOVB R1,@VDPWD
+       MOVB R1,@VDPWD                * screen offset
+       LI   R1,PNAME
+       MOVB *R1,R2
+       SRL  R2,8
+       INC  R2
+PB1    MOVB *R1+,@VDPWD              * name length and name
+       DEC  R2
+       JNE  PB1
+       MOV  *R10+,R11
+       B    *R11
+* R1 high = opcode -> R0 = error (0 none)
+PABOP  DECT R10
+       MOV  R11,*R10
+       LI   R0,PAB
+       BL   @VSBW
+       BL   @DSRLNK
+       MOV  *R10+,R11
+       B    *R11
+
+* DSRLNK for the PAB at PAB: R0 = error code (0 none, >FF no such device)
+* the usual search: every card >1000->1F00, its device list at >4008, the
+* routine called from GPLWS with R12 = CRU base, >8354 = length of the
+* device name, >8356 = its end (the '.') in VDP
+DSRLNK DECT R10
+       MOV  R11,*R10
+       LI   R0,PAB+9
+       BL   @VRA
+       MOVB @VDPRD,R1
+       SRL  R1,8
+       LI   R2,NAMBUF
+       CLR  R3
+DL1    MOVB @VDPRD,R4
+       CB   R4,@PERIOD
+       JEQ  DL2
+       MOVB R4,*R2+
+       INC  R3
+       DEC  R1
+       JNE  DL1
+DL2    MOV  R3,@>8354
+       LI   R0,PAB+10
+       A    R3,R0
+       MOV  R0,@>8356
+       LI   R0,8
+       BL   @DLCALL
+       LI   R0,>FF
+       MOV  @DLFND,R1
+       JEQ  DL9
+       LI   R0,PAB+1
+       BL   @VRA
+       MOVB @VDPRD,R0
+       SRL  R0,13
+DL9    MOV  *R10+,R11
+       B    *R11
+
+* subprogram R1 (high byte: >14, >15) -> R0 = its error byte (>FF: none found)
+SUBLNK DECT R10
+       MOV  R11,*R10
+       MOVB R1,@NAMBUF
+       LI   R0,1
+       MOV  R0,@>8354
+       LI   R0,10
+       BL   @DLCALL
+       LI   R0,>FF
+       MOV  @DLFND,R1
+       JEQ  SL9
+       MOVB @>8350,R0
+       SRL  R0,8
+SL9    MOV  *R10+,R11
+       B    *R11
+
+* the list at >4000+R0 (8 devices, 10 subprograms) of each card: NAMBUF
+DLCALL MOV  R0,@DLOFF
+       LI   R0,WS
+       LI   R1,WSSAV
+       LI   R2,16
+DC1    MOV  *R0+,*R1+
+       DEC  R2
+       JNE  DC1
+       CLR  @DLFND
+       LWPI GPLWS
+       LI   R12,>0F00
+DLNXT  SBZ  0
+       AI   R12,>0100
+       CI   R12,>2000
+       JEQ  DLEND
+       MOV  R12,@>83D0
+       SBO  0
+       LI   R2,>4000
+       CB   *R2,@HAA
+       JNE  DLNXT
+       A    @DLOFF,R2
+DLL    MOV  *R2,R2
+       JEQ  DLNXT
+       MOV  R2,@>83D2
+       MOV  R2,R1
+       INCT R1
+       MOV  *R1+,R9
+       MOVB @>8355,R5
+       CB   R5,*R1+
+       JNE  DLNE
+       SRL  R5,8
+       LI   R6,NAMBUF
+DLC    CB   *R6+,*R1+
+       JNE  DLNE
+       DEC  R5
+       JNE  DLC
+       BL   *R9
+       JMP  DLNE
+       SBZ  0
+       SETO @DLFND
+       JMP  DLEND
+DLNE   SBO  0
+       MOV  @>83D2,R2
+       JMP  DLL
+DLEND  LI   R0,WSSAV
+       LI   R1,WS
+       LI   R2,16
+DC4    MOV  *R0+,*R1+
+       DEC  R2
+       JNE  DC4
+       LWPI WS
+       B    *R11
+
+HAA    BYTE >AA
+PERIOD TEXT '.'
+       EVEN
+
+
+       BANK 0
+       COPY "menu.a99"
+
+       BANK 1
+       COPY "term.a99"
+       COPY "xmodem.a99"
+
+       BANK 2
+       COPY "font64.a99"
+
+       BANK 3
+       DATA 0
+
+       END

@@ -1,0 +1,948 @@
+********************************************************************************
+* xmodem.a99 - APEDSK TERMINAL, bank 1: XMODEM download and upload
+*
+* Download: CRC ('C'; after four silent tries the checksum, NAK), blocks of
+* 128 (SOH) or 1024 (STX). A file that starts with a TIFILES header is made
+* with the type in the header (subprogram >15, "file direct output") and
+* written sector by sector; any other file becomes DIS/FIX 128, one record a
+* block (the last block keeps its padding).
+* Upload: the file is read sector by sector (subprogram >14, "file direct
+* input") and sent as TIFILES, blocks of 128, CRC or checksum as the
+* receiver asks.
+* During the transfer telnet is asked for BINARY; IAC is doubled out and
+* undone in, the other commands are skipped.
+********************************************************************************
+XBLK   EQU  XV+0                      * the block number expected / sent
+XCRC   EQU  XV+2                      * 1: CRC, 0: checksum
+XERR   EQU  XV+4                      * tries
+XCRCV  EQU  XV+6
+XSUM   EQU  XV+8
+XN     EQU  XV+10                     * 128 or 1024
+XTIF   EQU  XV+12                     * the file is TIFILES
+XSEC   EQU  XV+14                     * the next sector of the file
+XTOT   EQU  XV+16                     * its sectors
+XSB    EQU  XV+18                     * bytes in SECBUF
+XDRV   EQU  XV+20
+XCNT   EQU  XV+22                     * blocks done
+XL3    EQU  XV+24                     * a DIS/FIX 128 file is open
+XIAC   EQU  XV+26                     * telnet in the transfer
+XRB    EQU  XV+28                     * the block number received
+XRBC   EQU  XV+30                     * its complement was right
+XCOL   EQU  XV+32
+XMAX   EQU  XV+34
+XLEN   EQU  XV+36
+XSAVE  EQU  XV+40                     * 5 words
+
+SOH    EQU  1
+STX    EQU  2
+EOT    EQU  4
+ACK    EQU  6
+NAK    EQU  >15
+CAN    EQU  >18
+
+********************************************************************************
+* D in the session menu: download
+********************************************************************************
+XDOWN  DECT R10
+       MOV  R11,*R10
+       BL   @ATNORM
+       LI   R1,MXDN
+       BL   @XASKF
+       MOV  R0,R0
+       JEQ  XD00
+       B    @XD99
+XD00   CLR  R4                        * there already? replace it, Y/N
+       CLR  @SUBINF+2
+       LI   R1,>1400
+       BL   @XSUBIO
+       MOV  R0,R0
+       JNE  XD1
+       LI   R1,MXREP
+       BL   @XYN
+       MOV  R0,R0
+       JNE  XD0
+       LI   R1,MXCAN
+       B    @XD98
+XD0    LI   R1,>0700                  * DELETE
+       CLR  R2
+       BL   @PABNEW
+       BL   @DSRLNK
+XD1    BL   @XBINON
+       LI   R1,MXRUN
+       BL   @SRMSG
+       LI   R0,1
+       MOV  R0,@XBLK
+       MOV  R0,@XCRC
+       CLR  @XERR
+       CLR  @XCNT
+       CLR  @XTIF
+       CLR  @XL3
+       CLR  @XSB
+       CLR  @XSEC
+       CLR  @XIAC
+       CLR  @RXN
+XD2    LI   R1,'C'                    * nothing yet: C (or NAK) again
+       MOV  @XCRC,R0
+       JNE  XD2A
+       LI   R1,NAK
+XD2A   BL   @XPUTB
+       BL   @TXFLSH
+XD3    LI   R3,180
+       BL   @XGETB
+       CI   R0,1
+       JEQ  XDTO
+       MOV  R0,R0
+       JNE  XDSTOP
+       CI   R1,SOH
+       JEQ  XD4
+       CI   R1,STX
+       JEQ  XD4K
+       CI   R1,EOT
+       JEQ  XDEOT
+       CI   R1,CAN
+       JEQ  XDCANR
+       JMP  XD3
+XDTO   INC  @XERR
+       MOV  @XERR,R0
+       CI   R0,10
+       JHE  XDFAIL
+       MOV  @XCNT,R1
+       JNE  XDNAK1
+       CI   R0,4                      * no answer to C: the checksum
+       JNE  XD2
+       CLR  @XCRC
+       JMP  XD2
+XD4    LI   R0,128
+       JMP  XD4A
+XD4K   LI   R0,1024
+XD4A   MOV  R0,@XN
+       BL   @XRBLK
+       CI   R0,1
+       JEQ  XDNAK
+       MOV  R0,R0
+       JNE  XDSTOP
+       MOV  @XRB,R0
+       C    R0,@XBLK
+       JEQ  XD5
+       MOV  @XBLK,R2                  * the last one again: ACK
+       DEC  R2
+       ANDI R2,>00FF
+       C    R0,R2
+       JEQ  XDACK
+       JMP  XDFAIL
+XD5    BL   @XSTORE
+       MOV  R0,R0
+       JNE  XDDSK
+       INC  @XBLK
+       MOV  @XBLK,R0
+       ANDI R0,>00FF
+       MOV  R0,@XBLK
+       INC  @XCNT
+       CLR  @XERR
+       BL   @XPROG
+XDACK  LI   R1,ACK
+       BL   @XPUTB
+       BL   @TXFLSH
+       JMP  XD3
+XDNAK  BL   @XPURGE
+       INC  @XERR
+       MOV  @XERR,R0
+       CI   R0,10
+       JHE  XDFAIL
+XDNAK1 LI   R1,NAK
+       BL   @XPUTB
+       BL   @TXFLSH
+       JMP  XD3
+XDEOT  BL   @XFINR
+       MOV  R0,R0
+       JNE  XDDSK
+       LI   R1,ACK
+       BL   @XPUTB
+       BL   @TXFLSH
+       LI   R1,MXOK
+       JMP  XDEND
+XDCANR LI   R1,MXCAN
+       JMP  XDEND0
+XDDSK  BL   @XCANS
+       LI   R1,MXDSK
+       JMP  XDEND0
+XDSTOP CI   R0,2                      * FCTN-9: CAN; the BBS hung up: nothing to send
+       JNE  XDFAIL0
+       BL   @XCANS
+       LI   R1,MXCAN
+       JMP  XDEND0
+XDFAIL BL   @XCANS
+XDFAIL0 LI  R1,MXFAIL
+XDEND0 DECT R10
+       MOV  R1,*R10
+       BL   @XFINR
+       MOV  *R10+,R1
+XDEND  DECT R10
+       MOV  R1,*R10
+       BL   @XBINOF
+       MOV  *R10+,R1
+       BL   @XDONE
+       JMP  XD99
+XD98   BL   @SRMSG
+       BL   @WKEY
+XD99   BL   @ATREST
+       MOV  *R10+,R11
+       B    *R11
+
+* XN bytes of XBUF to the file -> R0 = error
+XSTORE DECT R10
+       MOV  R11,*R10
+       LI   R4,XBUF
+       MOV  @XN,R5
+       MOV  @XCNT,R0
+       JNE  XS2
+       LI   R0,XBUF                   * the first block: TIFILES?
+       LI   R1,TIFID
+       LI   R2,8
+XS0    CB   *R0+,*R1+
+       JNE  XS1
+       DEC  R2
+       JNE  XS0
+       SETO @XTIF
+       MOV  @XBUF+8,R0
+       MOV  R0,@XTOT
+       MOV  R0,@SUBINF+2              * sectors, then flags, recs/sector, EOF
+       LI   R0,XBUF+10                * offset, record length, records
+       LI   R1,SUBINF+4
+       LI   R2,6
+XS0A   MOVB *R0+,*R1+
+       DEC  R2
+       JNE  XS0A
+       CLR  R4
+       LI   R1,>1500                  * make the file
+       BL   @XSUBIO
+       MOV  R0,R0
+       JNE  XS9
+       LI   R4,XBUF+128
+       AI   R5,-128
+       JMP  XS2
+XS1    LI   R1,>0002                  * OPEN DIS/FIX 128 OUTPUT
+       LI   R2,128
+       BL   @PABNEW
+       BL   @DSRLNK
+       MOV  R0,R0
+       JNE  XS9
+       SETO @XL3
+       LI   R4,XBUF
+       MOV  @XN,R5
+XS2    MOV  @XTIF,R0
+       JEQ  XS6
+XS3    MOV  R5,R5                     * TIFILES: sector by sector
+       JEQ  XS8
+       MOV  @XSB,R1
+       MOVB *R4+,@SECBUF(R1)
+       INC  R1
+       MOV  R1,@XSB
+       MOV  R1,R0
+       DEC  R5
+       CI   R0,256
+       JNE  XS3
+       BL   @XWSEC
+       MOV  R0,R0
+       JEQ  XS3
+       JMP  XS9
+XS6    MOV  R5,R5                     * DIS/FIX 128: a record a 128 bytes
+       JEQ  XS8
+       LI   R0,VBUF
+       MOV  R4,R1
+       LI   R2,128
+       BL   @VMBW
+       LI   R0,PAB+5
+       LI   R1,>8000
+       BL   @VSBW
+       LI   R1,>0300
+       BL   @PABOP
+       MOV  R0,R0
+       JNE  XS9
+       AI   R4,128
+       AI   R5,-128
+       JMP  XS6
+XS8    CLR  R0
+XS9    MOV  *R10+,R11
+       B    *R11
+
+* SECBUF -> sector XSEC of the file (if it has one more) -> R0 = error
+XWSEC  DECT R10
+       MOV  R11,*R10
+       DECT R10
+       MOV  R4,*R10
+       DECT R10
+       MOV  R5,*R10
+       CLR  R0
+       CLR  @XSB
+       C    @XSEC,@XTOT
+       JHE  XW9
+       LI   R0,SECVDP
+       LI   R1,SECBUF
+       LI   R2,256
+       BL   @VMBW
+       MOV  @XSEC,@SUBINF+2
+       LI   R4,1
+       LI   R1,>1500
+       BL   @XSUBIO
+       INC  @XSEC
+XW9    MOV  *R10+,R5
+       MOV  *R10+,R4
+       MOV  *R10+,R11
+       B    *R11
+
+* the end: the part of a sector left, or the CLOSE -> R0 = error
+XFINR  DECT R10
+       MOV  R11,*R10
+       CLR  R0
+       MOV  @XTIF,R1
+       JEQ  XF2
+       MOV  @XSB,R1
+       JEQ  XF9
+       BL   @XWSEC
+       JMP  XF9
+XF2    MOV  @XL3,R1
+       JEQ  XF9
+       CLR  @XL3
+       LI   R1,>0100
+       BL   @PABOP
+XF9    CLR  @XTIF
+       MOV  *R10+,R11
+       B    *R11
+
+********************************************************************************
+* U in the session menu: upload
+********************************************************************************
+XUP    DECT R10
+       MOV  R11,*R10
+       BL   @ATNORM
+       LI   R1,MXUP
+       BL   @XASKF
+       MOV  R0,R0
+       JEQ  XU00
+       B    @XU99
+XU00   CLR  R4                        * the file's sectors and information
+       CLR  @SUBINF+2
+       LI   R1,>1400
+       BL   @XSUBIO
+       MOV  R0,R0
+       JEQ  XU0
+       LI   R1,MXNF
+       BL   @SRMSG
+       BL   @WKEY
+       B    @XU99
+XU0    LI   R0,TIHDR                  * the TIFILES header
+       LI   R2,64
+XU0A   CLR  *R0+
+       DEC  R2
+       JNE  XU0A
+       LI   R0,TIFID
+       LI   R1,TIHDR
+       LI   R2,8
+XU0B   MOVB *R0+,*R1+
+       DEC  R2
+       JNE  XU0B
+       MOV  @SUBINF+2,R0
+       MOV  R0,@XTOT
+       MOV  R0,@TIHDR+8
+       LI   R0,SUBINF+4
+       LI   R1,TIHDR+10
+       LI   R2,6
+XU0C   MOVB *R0+,*R1+
+       DEC  R2
+       JNE  XU0C
+       BL   @XBINON
+       LI   R1,MXRUN
+       BL   @SRMSG
+       CLR  @XCNT
+       CLR  @XIAC
+       CLR  @RXN
+       CLR  @XERR
+XU1    LI   R3,3600                   * the receiver: C or NAK, a minute
+       BL   @XGETB
+       MOV  R0,R0
+       JNE  XUSTOP
+       CI   R1,'C'
+       JEQ  XU1C
+       CI   R1,NAK
+       JEQ  XU1N
+       CI   R1,CAN
+       JEQ  XUCANR
+       JMP  XU1
+XU1C   LI   R0,1
+       JMP  XU1D
+XU1N   CLR  R0
+XU1D   MOV  R0,@XCRC
+       LI   R0,1
+       MOV  R0,@XBLK
+       CLR  @XSEC
+       LI   R4,TIHDR
+       BL   @XSBLK
+       MOV  R0,R0
+       JNE  XUERR
+XU2    C    @XSEC,@XTOT
+       JHE  XUEOT
+       MOV  @XSEC,@SUBINF+2
+       LI   R4,1
+       LI   R1,>1400
+       BL   @XSUBIO
+       MOV  R0,R0
+       JNE  XUDSK
+       LI   R0,SECVDP
+       LI   R1,SECBUF
+       LI   R2,256
+       BL   @VMBR
+       LI   R4,SECBUF
+       BL   @XSBLK
+       MOV  R0,R0
+       JNE  XUERR
+       LI   R4,SECBUF+128
+       BL   @XSBLK
+       MOV  R0,R0
+       JNE  XUERR
+       INC  @XSEC
+       JMP  XU2
+XUEOT  CLR  @XERR                     * EOT until ACK
+XUE1   LI   R1,EOT
+       BL   @XPUTB
+       BL   @TXFLSH
+XUE2   LI   R3,600
+       BL   @XGETB
+       CI   R0,1
+       JEQ  XUE3
+       MOV  R0,R0
+       JNE  XUSTOP
+       CI   R1,ACK
+       JNE  XUE2
+       LI   R1,MXOK
+       JMP  XUEND
+XUE3   INC  @XERR
+       MOV  @XERR,R0
+       CI   R0,10
+       JL   XUE1
+       JMP  XUFAIL
+XUERR  CI   R0,1                      * from XSBLK: 1 failed, 2 FCTN-9, 3 hung
+       JEQ  XUFAIL                    * up, 4 cancelled by the receiver
+       CI   R0,4
+       JEQ  XUCANR
+XUSTOP CI   R0,2
+       JNE  XUFAIL0
+       BL   @XCANS
+       LI   R1,MXCAN
+       JMP  XUEND
+XUCANR LI   R1,MXCAN
+       JMP  XUEND
+XUDSK  BL   @XCANS
+       LI   R1,MXDSK
+       JMP  XUEND
+XUFAIL BL   @XCANS
+XUFAIL0 LI  R1,MXFAIL
+XUEND  DECT R10
+       MOV  R1,*R10
+       BL   @XBINOF
+       MOV  *R10+,R1
+       BL   @XDONE
+XU99   BL   @ATREST
+       MOV  *R10+,R11
+       B    *R11
+
+* send the 128 bytes at R4 as block XBLK until ACK -> R0 = 0, or 1 failed,
+* 2 FCTN-9, 3 hung up, 4 CAN
+XSBLK  DECT R10
+       MOV  R11,*R10
+       CLR  @XERR
+XSB1   CLR  @XCRCV
+       CLR  @XSUM
+       LI   R1,SOH
+       BL   @XPUTB
+       MOV  @XBLK,R1
+       BL   @XPUTB
+       LI   R1,>00FF
+       S    @XBLK,R1
+       BL   @XPUTB
+       MOV  R4,R5
+       LI   R6,128
+XSB2   MOVB *R5+,R1
+       SRL  R1,8
+       BL   @CRCB
+       BL   @XPUTB
+       DEC  R6
+       JNE  XSB2
+       MOV  @XCRC,R0
+       JEQ  XSB3
+       MOVB @XCRCV,R1
+       SRL  R1,8
+       BL   @XPUTB
+       MOV  @XCRCV,R1
+       ANDI R1,>00FF
+       BL   @XPUTB
+       JMP  XSB4
+XSB3   MOV  @XSUM,R1
+       ANDI R1,>00FF
+       BL   @XPUTB
+XSB4   BL   @TXFLSH
+XSB5   LI   R3,600
+       BL   @XGETB
+       CI   R0,1
+       JEQ  XSB7
+       MOV  R0,R0
+       JNE  XSB9
+       CI   R1,ACK
+       JEQ  XSB6
+       CI   R1,NAK
+       JEQ  XSB7
+       CI   R1,CAN
+       JNE  XSB5
+       LI   R0,4
+       JMP  XSB9
+XSB6   INC  @XBLK
+       MOV  @XBLK,R0
+       ANDI R0,>00FF
+       MOV  R0,@XBLK
+       INC  @XCNT
+       BL   @XPROG
+       CLR  R0
+       JMP  XSB9
+XSB7   INC  @XERR
+       MOV  @XERR,R0
+       CI   R0,10
+       JL   XSB1
+       LI   R0,1
+XSB9   MOV  *R10+,R11
+       B    *R11
+
+********************************************************************************
+* the bytes of a transfer
+********************************************************************************
+* a received block after SOH / STX: number, complement, XN bytes, CRC or sum
+* -> R0 = 0 good (number in XRB), 1 bad, 2 FCTN-9, 3 hung up
+XRBLK  DECT R10
+       MOV  R11,*R10
+       LI   R3,120
+       BL   @XGETB
+       MOV  R0,R0
+       JNE  XRB9
+       MOV  R1,@XRB
+       LI   R3,120
+       BL   @XGETB
+       MOV  R0,R0
+       JNE  XRB9
+       A    @XRB,R1
+       CLR  @XRBC
+       CI   R1,255
+       JNE  XRB0
+       SETO @XRBC
+XRB0   CLR  @XCRCV
+       CLR  @XSUM
+       LI   R4,XBUF
+       MOV  @XN,R5
+XRB1   LI   R3,120
+       BL   @XGETB
+       MOV  R0,R0
+       JNE  XRB9
+       SWPB R1
+       MOVB R1,*R4+
+       SWPB R1
+       BL   @CRCB
+       DEC  R5
+       JNE  XRB1
+       MOV  @XCRC,R0
+       JEQ  XRB3
+       LI   R3,120
+       BL   @XGETB
+       MOV  R0,R0
+       JNE  XRB9
+       MOV  R1,R4
+       SWPB R4
+       LI   R3,120
+       BL   @XGETB
+       MOV  R0,R0
+       JNE  XRB9
+       SOC  R1,R4
+       C    R4,@XCRCV
+       JNE  XRB8
+       JMP  XRB4
+XRB3   LI   R3,120
+       BL   @XGETB
+       MOV  R0,R0
+       JNE  XRB9
+       MOV  @XSUM,R2
+       ANDI R2,>00FF
+       C    R1,R2
+       JNE  XRB8
+XRB4   MOV  @XRBC,R0
+       JEQ  XRB8
+       CLR  R0
+       JMP  XRB9
+XRB8   LI   R0,1
+XRB9   MOV  *R10+,R11
+       B    *R11
+
+* R1 = byte: CRC-16 (XMODEM: >1021) in XCRCV, the sum in XSUM; keeps R1
+CRCB   MOV  @XCRCV,R2
+       MOV  R1,R3
+       SWPB R3
+       ANDI R3,>FF00
+       XOR  R3,R2
+       LI   R3,8
+CR1    SLA  R2,1
+       JNC  CR2
+       XOR  @POLY,R2
+CR2    DEC  R3
+       JNE  CR1
+       MOV  R2,@XCRCV
+       A    R1,@XSUM
+       B    *R11
+
+* one byte within R3 frames -> R1, R0 = 0; 1 time out, 2 FCTN-9, 3 hung up
+* (telnet: IAC IAC is >FF, the other commands are skipped)
+XGETB  DECT R10
+       MOV  R11,*R10
+       MOV  R3,@TIMER
+XG1    MOV  @RXN,R0
+       JNE  XG5
+       LI   R0,>7200
+       BL   @NETCMD
+       MOVB @CALLBF,R0
+       SRL  R0,8
+       JEQ  XG3
+       CI   R0,31
+       JH   XGCL
+       MOV  R0,@RXN
+       MOV  R0,R2
+       LI   R1,CALLBF+1
+       LI   R3,RXBUF
+       MOV  R3,@RXP
+XG2    MOVB *R1+,*R3+
+       DEC  R2
+       JNE  XG2
+       JMP  XG5
+XG3    MOVB @VDPSTA,R0
+       JGT  XG4
+       JEQ  XG4
+       DEC  @TIMER
+       JEQ  XGTO
+XG4    BL   @KEY
+       CI   R0,K.BACK
+       JEQ  XGCN
+       JMP  XG1
+XG5    MOV  @RXP,R2
+       MOVB *R2+,R1
+       MOV  R2,@RXP
+       DEC  @RXN
+       SRL  R1,8
+       MOV  @XIAC,R2
+       JNE  XG6
+       CI   R1,>FF
+       JNE  XGOK
+       INC  @XIAC
+       JMP  XG1
+XG6    DEC  R2                        * after IAC
+       JNE  XG7
+       CLR  @XIAC
+       CI   R1,>FF
+       JEQ  XGOK
+       CI   R1,>FA
+       JNE  XG6A
+       LI   R0,3
+       MOV  R0,@XIAC
+       JMP  XG1
+XG6A   CI   R1,>FB
+       JL   XG1
+       LI   R0,2
+       MOV  R0,@XIAC
+       JMP  XG1
+XG7    DEC  R2                        * the option of WILL / DO...: skipped
+       JNE  XG8
+       CLR  @XIAC
+       JMP  XG1
+XG8    DEC  R2                        * in SB: until IAC SE
+       JNE  XG9
+       CI   R1,>FF
+       JNE  XG1
+       LI   R0,4
+       MOV  R0,@XIAC
+       JMP  XG1
+XG9    LI   R0,3
+       CI   R1,>F0
+       JNE  XG9A
+       CLR  R0
+XG9A   MOV  R0,@XIAC
+       JMP  XG1
+XGOK   CLR  R0
+       JMP  XGR
+XGTO   LI   R0,1
+       JMP  XGR
+XGCN   LI   R0,2
+       JMP  XGR
+XGCL   LI   R0,3
+XGR    MOV  *R10+,R11
+       B    *R11
+
+* until a second of silence
+XPURGE DECT R10
+       MOV  R11,*R10
+XPU1   LI   R3,60
+       BL   @XGETB
+       MOV  R0,R0
+       JEQ  XPU1
+       MOV  *R10+,R11
+       B    *R11
+
+* R1 = byte out (IAC doubled), SEND when 30 are waiting; keeps R1-R6
+XPUTB  DECT R10
+       MOV  R11,*R10
+       LI   R0,XSAVE
+       MOV  R1,*R0+
+       MOV  R2,*R0+
+       MOV  R3,*R0+
+       MOV  R4,*R0+
+       MOV  R5,*R0+
+       BL   @TXPUT
+       CI   R1,>FF
+       JNE  XP1
+       BL   @TXPUT
+XP1    MOV  @TXN,R0
+       CI   R0,30
+       JL   XP2
+       BL   @TXFLSH
+XP2    LI   R0,XSAVE
+       MOV  *R0+,R1
+       MOV  *R0+,R2
+       MOV  *R0+,R3
+       MOV  *R0+,R4
+       MOV  *R0+,R5
+       MOV  *R10+,R11
+       B    *R11
+
+* CAN CAN CAN
+XCANS  DECT R10
+       MOV  R11,*R10
+       LI   R1,CAN
+       BL   @XPUTB
+       BL   @XPUTB
+       BL   @XPUTB
+       BL   @TXFLSH
+       MOV  *R10+,R11
+       B    *R11
+
+* telnet BINARY both ways for the transfer, and back
+XBINON LI   R3,TBINON
+       JMP  XBN
+XBINOF LI   R3,TBINOF
+XBN    DECT R10
+       MOV  R11,*R10
+       BL   @TXSTR
+       BL   @TXFLSH
+       MOV  *R10+,R11
+       B    *R11
+
+********************************************************************************
+* the file and the status row
+********************************************************************************
+* the subprogram R1 (>1400, >1500), R4 sectors (0: information), first
+* sector / sectors in SUBINF+2 -> R0 = error
+XSUBIO DECT R10
+       MOV  R11,*R10
+       MOVB @XDRV+1,@>834C
+       SWPB R4
+       MOVB R4,@>834D
+       LI   R0,FNVDP
+       MOV  R0,@>834E
+       LI   R0,>2000                  * the information at >8320
+       MOVB R0,@>8350
+       LI   R0,SECVDP
+       MOV  R0,@SUBINF
+       BL   @SUBLNK
+       MOV  *R10+,R11
+       B    *R11
+
+* the file name after the label R1 on the status row, from XNAME:
+* DSKn.NAME -> XDRV, FNVDP (10 characters), PNAME, XNAME; R0 = 0, or 1
+XASKF  DECT R10
+       MOV  R11,*R10
+       BL   @CUROFF
+       BL   @SRMSG
+       LI   R0,XNAME
+       MOVB *R0+,R5
+       SRL  R5,8
+       MOV  R5,R2
+       LI   R1,NAME
+XA1    MOVB *R0+,*R1+
+       DEC  R2
+       JGT  XA1
+       LI   R6,15
+       LI   R4,15
+       BL   @XLINE
+       MOV  R1,R1
+       JNE  XA8
+       MOV  R0,R5
+       CI   R5,6
+       JL   XABAD
+       LI   R1,NAME                   * DSK in capitals, a drive 1-9, a period
+       LI   R2,DSKTXT
+       LI   R3,3
+XA2    MOVB *R1,R0
+       CB   R0,@BLOWA
+       JL   XA2A
+       AI   R0,>E000
+       MOVB R0,*R1
+XA2A   CB   *R1+,*R2+
+       JNE  XABAD
+       DEC  R3
+       JNE  XA2
+       MOVB @NAME+3,R0
+       SRL  R0,8
+       AI   R0,-'0'
+       JLE  XABAD
+       CI   R0,9
+       JH   XABAD
+       MOV  R0,@XDRV
+       CB   @NAME+4,@PERIOD
+       JNE  XABAD
+       LI   R0,FNVDP                  * the name, padded with spaces to 10
+       BL   @VWA
+       LI   R1,NAME+5
+       MOV  R5,R3
+       AI   R3,-5
+       LI   R2,10
+XA3    LI   R0,>2000
+       MOV  R3,R3
+       JEQ  XA3A
+       MOVB *R1+,R0
+       DEC  R3
+XA3A   MOVB R0,@VDPWD
+       DEC  R2
+       JNE  XA3
+       SWPB R5                        * NAME -> XNAME and PNAME
+       MOVB R5,@XNAME
+       MOVB R5,@PNAME
+       SWPB R5
+       LI   R1,NAME
+       LI   R2,XNAME+1
+       LI   R3,PNAME+1
+XA4    MOVB *R1,*R2+
+       MOVB *R1+,*R3+
+       DEC  R5
+       JNE  XA4
+       CLR  R0
+       JMP  XA9
+XABAD  LI   R1,MXBADN
+       BL   @SRMSG
+       BL   @WKEY
+XA8    LI   R0,1
+XA9    MOV  *R10+,R11
+       B    *R11
+
+* line editor on the status row from column R6: NAME (R5 characters), at most
+* R4 -> R0 = length, R1 = 0 ENTER, 1 FCTN-9
+XLINE  DECT R10
+       MOV  R11,*R10
+       MOV  R6,@XCOL
+       MOV  R4,@XMAX
+XE0    MOV  R5,@XLEN
+       CLR  R0
+       MOVB R0,@NAME(R5)
+       MOV  @SROWN,R5
+       MOV  @XCOL,R6
+       LI   R1,NAME
+       LI   R2,40
+       BL   @SPRT
+       LI   R1,>DB
+       BL   @PUTAT
+       INC  R6
+       LI   R1,32
+       BL   @PUTAT
+       MOV  @XLEN,R5
+XE2    BL   @KEY
+       MOV  R0,R0
+       JEQ  XE2
+       CI   R0,K.ENTR
+       JEQ  XE8
+       CI   R0,K.BACK
+       JEQ  XE7
+       CI   R0,K.LEFT
+       JNE  XE3
+       MOV  R5,R5
+       JEQ  XE2
+       DEC  R5
+       JMP  XE0
+XE3    CI   R0,33
+       JL   XE2
+       CI   R0,126
+       JH   XE2
+       C    R5,@XMAX
+       JHE  XE2
+       SWPB R0
+       MOVB R0,@NAME(R5)
+       INC  R5
+       JMP  XE0
+XE7    LI   R1,1
+       JMP  XE9
+XE8    CLR  R1
+XE9    MOV  R5,R0
+       MOV  *R10+,R11
+       B    *R11
+
+* the question R1 on the status row -> R0 = 1 yes
+XYN    DECT R10
+       MOV  R11,*R10
+       BL   @SRMSG
+       BL   @WKEY
+       ANDI R0,>DF
+       CI   R0,YESK
+       JEQ  XY1
+       CLR  R0
+       JMP  XY9
+XY1    LI   R0,1
+XY9    MOV  *R10+,R11
+       B    *R11
+
+* the blocks done, on the status row after the label
+XPROG  DECT R10
+       MOV  R11,*R10
+       BL   @ATNORM
+       MOV  @XCNT,R0
+       BL   @DECW
+       MOV  @SROWN,R5
+       LI   R6,XCOLN
+       LI   R2,6
+       BL   @SPRT
+       BL   @ATREST
+       MOV  *R10+,R11
+       B    *R11
+
+* the end: the message R1, the blocks, a key
+XDONE  DECT R10
+       MOV  R11,*R10
+       BL   @SRMSG
+       BL   @XPROG
+       BL   @WKEY
+       MOV  *R10+,R11
+       B    *R11
+
+* R0 -> decimal at TSTR (R1 at its first digit, 0 after the last)
+DECW   LI   R1,TSTR+6
+       CLR  R2
+       MOVB R2,*R1
+DW1A   MOV  R0,R3
+       CLR  R2
+       DIV  @TEN,R2
+       AI   R3,'0'
+       SWPB R3
+       DEC  R1
+       MOVB R3,*R1
+       MOV  R2,R0
+       JNE  DW1A
+       B    *R11
+
+POLY   DATA >1021
+TEN    DATA 10
+XCOLN  EQU  32
+TIFID  BYTE 7
+       TEXT 'TIFILES'
+DSKTXT TEXT 'DSK'
+BLOWA  TEXT 'a'
+TBINON BYTE 6,>FF,>FB,0,>FF,>FD,0
+TBINOF BYTE 6,>FF,>FC,0,>FF,>FE,0
+       EVEN

@@ -1,9 +1,30 @@
-* term_it.a99 - TI-NET TERM: the terminal's texts in Italian (assembled with -D ITALIAN)
+* term_it.a99 - APEDSK TERMINAL: testi del terminale in italiano (-D ITALIAN)
 HANGK  EQU  'H'                       * the key that hangs up in the session menu
+YESK   EQU  'S'
 MCLOSD TEXT ' Chiusa dalla BBS. Un tasto per uscire.'
        BYTE 0
 MBAD   TEXT ' Risposta non valida dal firmware.'
        BYTE 0
-MMENU  TEXT ' H=RIAGGANCIA  ALTRO TASTO=CONTINUA'
+MMENU  TEXT ' H=RIAGGANCIA D=SCARICA U=CARICA'
+       BYTE 0
+MXDN   TEXT ' SCARICA IN:'
+       BYTE 0
+MXUP   TEXT ' CARICA FILE:'
+       BYTE 0
+MXREP  TEXT ' Il file esiste. Sostituirlo? S/N'
+       BYTE 0
+MXRUN  TEXT ' XMODEM  F9=STOP   BLOCCHI:'
+       BYTE 0
+MXOK   TEXT ' Fatto. Un tasto.   BLOCCHI:'
+       BYTE 0
+MXFAIL TEXT ' Fallito. Un tasto. BLOCCHI:'
+       BYTE 0
+MXCAN  TEXT ' Annullato. Un tasto.'
+       BYTE 0
+MXDSK  TEXT ' Errore del disco. Un tasto.'
+       BYTE 0
+MXNF   TEXT ' File non trovato. Un tasto.'
+       BYTE 0
+MXBADN TEXT ' Il nome: DSKn.NOME. Un tasto.'
        BYTE 0
        EVEN

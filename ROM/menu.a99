@@ -1,27 +1,69 @@
 ********************************************************************************
-* menu.a99 - TI-NET TERM, bank 0: address book, options, DSK1.BBSLIST
+* menu.a99 - APEDSK TERMINAL, bank 0: address book, options, LOAD / SAVE
 ********************************************************************************
+* line editor variables
+LEDAD  EQU  V+>A00
+LEDMX  EQU  V+>A02
+LEDMD  EQU  V+>A04
+
 ********************************************************************************
-* start (bank 0)
+* start (bank 0): nothing is read from disk until LOAD
 ********************************************************************************
 START0 LI   R10,STACK
+       BL   @F18DET
        BL   @VINIT
-       LI   R0,1
-       MOV  R0,@STATL
-       CLR  @PAL
-       CLR  @ECHOM
-       CLR  @CRLF
-       CLR  @COLM
-       BL   @LOADBK
-       LI   R1,SOPT
-       BL   @GETOPT
-       LI   R1,SBK
-       BL   @GETBK
+       BL   @DEFOPT
+       CLR  @BOOKN
+       LI   R0,DEFFN
+       LI   R1,FNAME
+       LI   R2,DEFFNE-DEFFN
+SA1    MOVB *R0+,*R1+
+       DEC  R2
+       JNE  SA1
+       LI   R0,DEFXN
+       LI   R1,XNAME
+       LI   R2,6
+SA2    MOVB *R0+,*R1+
+       DEC  R2
+       JNE  SA2
        BL   @SETCOL
        BL   @FWCHK
        MOV  @FWOK,R0
        JEQ  BOOKSC
        B    @FWERR
+
+* the options' defaults
+DEFOPT LI   R0,1
+       MOV  R0,@STATL
+       MOV  R0,@COLR
+       CLR  @PAL
+       CLR  @ECHOM
+       CLR  @CRLF
+       CLR  @COLM
+       B    *R11
+
+* F18A? unlock, status register 1 = >E0, then reset its registers (locks it)
+* (on a 9918 the writes land in R1, R7 and R2, which VINIT rewrites)
+F18DET DECT R10
+       MOV  R11,*R10
+       LI   R0,>391C
+       BL   @VWTR
+       LI   R0,>391C
+       BL   @VWTR
+       LI   R0,>0F01
+       BL   @VWTR
+       MOVB @VDPSTA,R1
+       LI   R0,>0F00
+       BL   @VWTR
+       CLR  @F18
+       ANDI R1,>E000
+       CI   R1,>E000
+       JNE  FD1
+       SETO @F18
+FD1    LI   R0,>3280
+       BL   @VWTR
+       MOV  *R10+,R11
+       B    *R11
 
 ********************************************************************************
 * address book screen
@@ -40,23 +82,13 @@ BKFLD  BL   @DRFLD
 BKLOOP BL   @KEY
        MOV  R0,R0
        JEQ  BKLOOP
-       CI   R0,K.ENTR
-       JEQ  BKCONN
-       CI   R0,K.BACK
-       JNE  BK1
-       B    @OPTSC
-BK1    CI   R0,K.REDO
-       JNE  BK2
-       B    @BKSAVE
-BK2    CI   R0,K.ERAS
-       JNE  BK3
-       B    @BKDEL
-BK3    CI   R0,K.PROC
-       JNE  BK3Q
-       B    @BKWR
-BK3Q   CI   R0,K.QUIT
-       JNE  BK4
-       BLWP @>0000
+       LI   R1,BKKEYS
+BK0    MOV  *R1+,R2
+       JEQ  BK4
+       MOV  *R1+,R3
+       C    R0,R2
+       JNE  BK0
+       B    *R3
 BK4    CI   R0,K.LEFT
        JNE  BK5
        MOV  @FLEN,R1
@@ -110,11 +142,20 @@ BK6    CI   R0,32
        CLR  R2
        MOVB R2,@FIELD(R1)
        JMP  BKFLD
+BKQUIT BLWP @>0000
+BKOPT  B    @OPTSC
+BKKEYS DATA K.ENTR,BKCONN,K.BACK,BKOPT,K.REDO,BKADD,K.ERAS,BKDEL
+       DATA K.BEGN,BKLOAD,K.PROC,BKSAVE,K.QUIT,BKQUIT,0
 
-* connect to FIELD
+* connect to FIELD (the port asked if it has none)
 BKCONN MOV  @FLEN,R0
-       JEQ  BKLOOP
-       BL   @MSGCLR
+       JNE  BC0
+       B    @BKLOOP
+BC0    BL   @PORTQ
+       MOV  R0,R0
+       JEQ  BC1A
+       B    @BKMSGE
+BC1A   BL   @MSGCLR
        LI   R0,16*40+1
        LI   R1,MCONN
        BL   @PRZ
@@ -126,28 +167,34 @@ BKCONN MOV  @FLEN,R0
        CI   R0,>FF
        JNE  BKC2
        B    @GOTERM
-BKC2   BL   @MSGCLR
-       LI   R0,16*40+1
-       LI   R1,MNOCON
-       BL   @PRZ
-       B    @BKLOOP
+BKC2   LI   R1,MNOCON
+       JMP  BKMSG
 
-* save FIELD as a new entry: ask the name
-BKSAVE MOV  @FLEN,R0
+* FIELD as a new entry (in memory): the port, then the name
+BKADD  MOV  @FLEN,R0
        JNE  BS1
        B    @BKLOOP
 BS1    MOV  @BOOKN,R0
        CI   R0,9
        JL   BS2
        LI   R1,MFULL
-       B    @BKMSG
-BS2    BL   @MSGCLR
+       JMP  BKMSG
+BS2    BL   @PORTQ
+       MOV  R0,R0
+       JNE  BKMSGE
+       BL   @MSGCLR
        LI   R0,16*40+1
        LI   R1,MNAME
        BL   @PRZ
-       BL   @LINEIN
+       LI   R0,16*40+7
+       LI   R4,14
+       CLR  R5
+       CLR  R6
+       BL   @LINED
+       MOV  R1,R1
+       JNE  BKMSGE
        MOV  R0,R0
-       JEQ  BS9
+       JEQ  BKMSGE
        MOV  @BOOKN,R0
        BL   @ENTRY
        LI   R2,NAME
@@ -164,7 +211,7 @@ BS4    MOVB *R2+,*R1+
        CLR  @FIELD
        LI   R1,MADDED
        JMP  BKMSG
-BS9    LI   R1,MEMPTY
+BKMSGE LI   R1,MEMPTY
 BKMSG  DECT R10
        MOV  R1,*R10
        BL   @MSGCLR
@@ -174,7 +221,7 @@ BKMSG  DECT R10
        BL   @BKLIST
        B    @BKFLD
 
-* delete an entry
+* delete an entry (in memory)
 BKDEL  MOV  @BOOKN,R0
        JNE  BD1
        B    @BKLOOP
@@ -186,9 +233,9 @@ BD2    BL   @KEY
        MOV  R0,R0
        JEQ  BD2
        AI   R0,-'1'
-       JLT  BD9
+       JLT  BKMSGE
        C    R0,@BOOKN
-       JHE  BD9
+       JHE  BKMSGE
        MOV  R0,R5
        BL   @ENTRY
        MOV  R1,R2
@@ -204,30 +251,34 @@ BD3    MOVB *R2+,*R1+
        DEC  R7
        JNE  BD3
 BD4    DEC  @BOOKN
+       CLR  @BKSEL
        LI   R1,MDELD
        JMP  BKMSG
 
-* FCTN-6: write the address book (with the options as last saved), after Y/N
-BKWR   LI   R1,MCONFB
-       BL   @CONFRM
-       LI   R1,MEMPTY
+* FCTN-5: LOAD address book and options from the file asked
+BKLOAD LI   R1,MLOAD
+       BL   @FNASK
        MOV  R0,R0
-       JEQ  BKMSG
-       LI   R1,CBK
-       BL   @GETBK
-       LI   R0,SOPT
-       MOV  R0,@SVOPT
-       LI   R0,CBK
-       MOV  R0,@SVBK
+       JNE  BKMSGE
+       BL   @LOADBK
+       LI   R1,MDSKER
+       MOV  R0,R0
+       JNE  BKMSG
+       BL   @SETCOL
+       CLR  @BKSEL
+       LI   R1,MLOADD
+       JMP  BKMSG
+
+* FCTN-6: SAVE address book and options in the file asked
+BKSAVE LI   R1,MSAVE
+       BL   @FNASK
+       MOV  R0,R0
+       JNE  BKMSGE
        BL   @SAVEBK
        LI   R1,MDSKER
        MOV  R0,R0
        JNE  BKMSG
-       LI   R1,SBK
-       BL   @GETBK
        LI   R1,MSAVED
-       JMP  BKMSG
-BD9    LI   R1,MEMPTY
        JMP  BKMSG
 
 * R0 = entry number -> R1 = its address (name; host at +NSIZE)
@@ -313,67 +364,184 @@ MSGCLR DECT R10
        MOV  R11,*R10
        LI   R0,16*40
        LI   R1,>2000
-       LI   R2,40
+       LI   R2,80
        BL   @VFILL
        MOV  *R10+,R11
        B    *R11
 
-* read a name (max 14) after the prompt on row 16 -> NAME, R0 = length (0: none)
-LINEIN DECT R10
+* FIELD without ':' -> ask the port on row 16 and add it (empty: 23);
+* R0 = 1: cancelled
+PORTQ  DECT R10
        MOV  R11,*R10
+       LI   R1,FIELD
+PQ1    MOVB *R1+,R0
+       JEQ  PQ2
+       CB   R0,@MCOLON
+       JNE  PQ1
+       JMP  PQ0
+PQ2    LI   R4,30
+       S    @FLEN,R4
+       CI   R4,5
+       JLE  PQ3
+       LI   R4,5
+PQ3    CI   R4,2
+       JLT  PQ0                      * no room: the firmware's 23
+       DECT R10
+       MOV  R4,*R10
+       BL   @MSGCLR
+       LI   R0,16*40+1
+       LI   R1,MPORT
+       BL   @PRZ
+       LI   R0,16*40+15
+       LI   R1,MPDEF
+       BL   @PRZ
+       MOV  *R10+,R4
+       LI   R0,16*40+8
        CLR  R5
-LI1    LI   R0,16*40+7
-       A    R5,R0
-       LI   R1,>DB00
-       BL   @VSBW
+       LI   R6,1
+       BL   @LINED
+       MOV  R1,R1
+       JNE  PQ8
+       MOV  R0,R0
+       JNE  PQ4
+       LI   R0,>3233                 * '23'
+       MOV  R0,@NAME
+       LI   R0,2
+PQ4    MOV  @FLEN,R1
+       MOVB @MCOLON,@FIELD(R1)
+       INC  R1
+       LI   R2,NAME
+PQ5    MOVB *R2+,@FIELD(R1)
+       INC  R1
+       DEC  R0
+       JNE  PQ5
+       CLR  R2
+       MOVB R2,@FIELD(R1)
+       MOV  R1,@FLEN
+       BL   @DRFLD
+       BL   @MSGCLR
+PQ0    CLR  R0
+       JMP  PQ9
+PQ8    LI   R0,1
+PQ9    MOV  *R10+,R11
+       B    *R11
+
+* the file name on row 16 after the label R1, from FNAME; ENTER -> FNAME and
+* PNAME, R0 = 0; FCTN-9 or an empty name: R0 = 1
+FNASK  DECT R10
+       MOV  R11,*R10
+       DECT R10
+       MOV  R1,*R10
+       BL   @MSGCLR
+       MOV  *R10+,R1
+       LI   R0,16*40+1
+       BL   @PRZ
+       LI   R0,FNAME
+       MOVB *R0+,R5
+       SRL  R5,8
+       MOV  R5,R2
+       LI   R1,NAME
+FA1    MOVB *R0+,*R1+
+       DEC  R2
+       JGT  FA1
+       LI   R0,16*40+7
+       LI   R4,32
+       CLR  R6
+       BL   @LINED
+       MOV  R1,R1
+       JNE  FA8
+       MOV  R0,R0
+       JEQ  FA8
+       SWPB R0
+       MOVB R0,@FNAME
+       MOVB R0,@PNAME
+       SWPB R0
+       LI   R1,NAME
+       LI   R2,FNAME+1
+       LI   R3,PNAME+1
+FA2    MOVB *R1,*R2+
+       MOVB *R1+,*R3+
+       DEC  R0
+       JNE  FA2
+       CLR  R0
+       JMP  FA9
+FA8    LI   R0,1
+FA9    MOV  *R10+,R11
+       B    *R11
+
+* line editor at VDP address R0 on the buffer NAME, which has R5 characters
+* already, at most R4; R6 = 0: any character but '|', 1: digits only
+* -> R0 = length, R1 = 0 ENTER, 1 FCTN-9
+LINED  DECT R10
+       MOV  R11,*R10
+       MOV  R0,@LEDAD
+       MOV  R4,@LEDMX
+       MOV  R6,@LEDMD
+LE0    MOV  @LEDAD,R0
+       BL   @VWA
+       LI   R1,NAME
+       MOV  R5,R2
+       JEQ  LE0B
+LE0A   MOVB *R1+,@VDPWD
+       DEC  R2
+       JNE  LE0A
+LE0B   LI   R1,>DB00
+       MOVB R1,@VDPWD
        LI   R1,>2000
        MOVB R1,@VDPWD
-LI2    BL   @KEY
+LE2    BL   @KEY
        MOV  R0,R0
-       JEQ  LI2
+       JEQ  LE2
        CI   R0,K.ENTR
-       JEQ  LI9
+       JEQ  LE8
        CI   R0,K.BACK
-       JNE  LI3
-       CLR  R5
-       JMP  LI9
-LI3    CI   R0,K.LEFT
-       JNE  LI4
+       JEQ  LE7
+       CI   R0,K.LEFT
+       JNE  LE3
        MOV  R5,R5
-       JEQ  LI2
+       JEQ  LE2
        DEC  R5
-       JMP  LI1
-LI4    CI   R0,'|'
-       JEQ  LI2
-       CI   R0,32
-       JL   LI2
+       JMP  LE0
+LE3    CI   R0,32
+       JL   LE2
        CI   R0,126
-       JH   LI2
-       CI   R5,14
-       JHE  LI2
+       JH   LE2
+       CI   R0,'|'
+       JEQ  LE2
+       MOV  @LEDMD,R1
+       JEQ  LE4
+       CI   R0,'0'
+       JL   LE2
+       CI   R0,'9'
+       JH   LE2
+LE4    C    R5,@LEDMX
+       JHE  LE2
        SWPB R0
        MOVB R0,@NAME(R5)
-       LI   R1,16*40+7
-       A    R5,R1
-       MOV  R0,R2
-       MOV  R1,R0
-       MOV  R2,R1
-       BL   @VSBW
        INC  R5
-       JMP  LI1
-LI9    CLR  R0
+       JMP  LE0
+LE7    LI   R1,1
+       JMP  LE9
+LE8    CLR  R1
+LE9    CLR  R0
        MOVB R0,@NAME(R5)
        MOV  R5,R0
        MOV  *R10+,R11
        B    *R11
 
 ********************************************************************************
-* options screen
+* options screen (they last for the session; SAVE keeps them in the file)
 ********************************************************************************
 OPTSC  LI   R10,STACK
        BL   @CLS
        LI   R3,OPSCR
        BL   @DRAWL
+       LI   R0,10*40+1
+       LI   R1,MF18N
+       MOV  @F18,R2
+       JEQ  OP0
+       LI   R1,MF18Y
+OP0    BL   @PRZ
 OP1    CLR  R3
 OP1A   MOV  R3,R4
        AI   R4,3
@@ -390,17 +558,15 @@ OP1A   MOV  R3,R4
        MOV  *R6,R1
        BL   @PRZ
        INC  R3
-       CI   R3,5
+       CI   R3,NOPT
        JL   OP1A
 OP3    BL   @KEY
        MOV  R0,R0
        JEQ  OP3
        CI   R0,K.BACK
        JEQ  OP5
-       CI   R0,K.PROC
-       JEQ  OPWR
        AI   R0,-'1'
-       CI   R0,4
+       CI   R0,NOPT-1
        JH   OP3
        MOV  R0,R4
        SLA  R4,1
@@ -408,89 +574,18 @@ OP3    BL   @KEY
        MOV  *R6,R7
        INC  R7
        C    R7,@OPTMAX(R4)
-       JLE  OP4
-       CLR  R7
+       JH   OP3Z
+       CI   R7,2                     * 80 columns: only with the F18A
+       JNE  OP4
+       CI   R4,8
+       JNE  OP4
+       MOV  @F18,R0
+       JNE  OP4
+OP3Z   CLR  R7
 OP4    MOV  R7,*R6
        BL   @SETCOL
-       BL   @MSGCLR
        JMP  OP1
 OP5    B    @BOOKSC
-
-* FCTN-6: write the options (with the address book as last saved), after Y/N
-OPWR   LI   R1,MCONFO
-       BL   @CONFRM
-       LI   R1,MEMPTY
-       MOV  R0,R0
-       JEQ  OPW8
-       LI   R1,COPT
-       BL   @GETOPT
-       LI   R0,COPT
-       MOV  R0,@SVOPT
-       LI   R0,SBK
-       MOV  R0,@SVBK
-       BL   @SAVEBK
-       LI   R1,MDSKER
-       MOV  R0,R0
-       JNE  OPW8
-       LI   R1,SOPT
-       BL   @GETOPT
-       LI   R1,MSAVED
-OPW8   DECT R10
-       MOV  R1,*R10
-       BL   @MSGCLR
-       MOV  *R10+,R1
-       LI   R0,16*40+1
-       BL   @PRZ
-       JMP  OP3
-
-* question R1 on row 16 -> R0 = 1 if the answer is YESK
-CONFRM DECT R10
-       MOV  R11,*R10
-       DECT R10
-       MOV  R1,*R10
-       BL   @MSGCLR
-       MOV  *R10+,R1
-       LI   R0,16*40+1
-       BL   @PRZ
-CF1    BL   @KEY
-       MOV  R0,R0
-       JEQ  CF1
-       ANDI R0,>DF
-       CI   R0,YESK
-       JEQ  CF2
-       CLR  R0
-       JMP  CF3
-CF2    LI   R0,1
-CF3    MOV  *R10+,R11
-       B    *R11
-
-* current options -> 5 words at R1
-GETOPT CLR  R3
-GO1    MOV  R3,R4
-       SLA  R4,1
-       MOV  @OPTVAR(R4),R5
-       MOV  *R5,*R1+
-       INC  R3
-       CI   R3,5
-       JL   GO1
-       B    *R11
-
-* current address book -> count and 9 entries at R1
-GETBK  MOV  @BOOKN,*R1+
-       LI   R2,BOOK
-       LI   R3,9*ESIZE/2
-GB1    MOV  *R2+,*R1+
-       DEC  R3
-       JNE  GB1
-       B    *R11
-
-* R0 = entry number -> R1 = its address in the block at SVBK
-SVENT  LI   R1,ESIZE
-       MPY  R0,R1
-       MOV  R2,R1
-       A    @SVBK,R1
-       INCT R1
-       B    *R11
 
 ********************************************************************************
 * firmware without the terminal commands, or no APEDSK99
@@ -542,7 +637,7 @@ FWCHK  LI   R0,>D000
 FW1    MOV  R1,@FWOK
        B    *R11
 
-* text mode, the font
+* text mode, the font, the inverse characters
 VINIT  DECT R10
        MOV  R11,*R10
        LI   R0,>0000
@@ -579,55 +674,54 @@ VI2    MOVB @GRMRD,@VDPWD
        LI   R1,FONT
        LI   R2,1280
        BL   @VMBW
-       MOV  *R10+,R11
+       LI   R5,INVPR                 * the inverse characters (inverse.py)
+VI3    MOVB *R5+,R0
+       JEQ  VI9
+       SRL  R0,8
+       SLA  R0,3
+       AI   R0,PATTAB
+       LI   R1,BTMP
+       LI   R2,8
+       BL   @VMBR
+       LI   R1,BTMP
+       LI   R2,4
+VI4    INV  *R1+
+       DEC  R2
+       JNE  VI4
+       MOVB *R5+,R0
+       SRL  R0,8
+       SLA  R0,3
+       AI   R0,PATTAB
+       LI   R1,BTMP
+       LI   R2,8
+       BL   @VMBW
+       JMP  VI3
+VI9    MOV  *R10+,R11
        B    *R11
 
 SETCOL MOV  @PAL,R1
        MOVB @PALTAB(R1),R0
        SRL  R0,8
-       MOV  R0,@PALV                 * for the bitmap colour table
+       MOV  R0,@PALV                 * for the bitmap and 80-column colours
        AI   R0,>0700
        B    @VWTR
 PALTAB BYTE >F4,>31,>17
        EVEN
 
 ********************************************************************************
-* DSK1.BBSLIST: address book and options
+* the file (PNAME): address book and options
 ********************************************************************************
-* PAB to VDP with opcode and flags from R1 (high: opcode, low: flags)
-PABSET DECT R10
-       MOV  R11,*R10
-       DECT R10
-       MOV  R1,*R10
-       LI   R0,PAB
-       LI   R1,PABT
-       LI   R2,PABTE-PABT
-       BL   @VMBW
-       MOV  *R10+,R1
-       LI   R0,PAB
-       BL   @VSBW
-       LI   R0,PAB+1
-       SWPB R1
-       BL   @VSBW
-       MOV  *R10+,R11
-       B    *R11
-* R1 high = opcode
-PABOP  DECT R10
-       MOV  R11,*R10
-       LI   R0,PAB
-       BL   @VSBW
-       BL   @DSRLNK
-       MOV  *R10+,R11
-       B    *R11
-
+* -> R0 = error (0: none; the book and the options are replaced)
 LOADBK DECT R10
        MOV  R11,*R10
-       CLR  @BOOKN
        LI   R1,>0014
-       BL   @PABSET
+       LI   R2,80
+       BL   @PABNEW
        BL   @DSRLNK
        MOV  R0,R0
        JNE  LB9
+       BL   @DEFOPT
+       CLR  @BOOKN
 LB1    LI   R1,>0200
        BL   @PABOP
        MOV  R0,R0
@@ -645,6 +739,13 @@ LB1    LI   R1,>0200
        JMP  LB1
 LB8    LI   R1,>0100
        BL   @PABOP
+       CLR  R0
+       MOV  @F18,R1                  * 80 columns saved, no F18A here
+       JNE  LB9
+       MOV  @COLM,R1
+       CI   R1,2
+       JNE  LB9
+       CLR  @COLM
 LB9    MOV  *R10+,R11
        B    *R11
 
@@ -660,7 +761,7 @@ PA1    DEC  R2
 PA1A   CB   *R1,@OPTLET(R3)
        JEQ  PA1B
        INC  R3
-       CI   R3,5
+       CI   R3,NOPT
        JL   PA1A
        JMP  PA1
 PA1B   MOVB @1(R1),R0
@@ -712,12 +813,12 @@ PA8B   CLR  R0
        INC  @BOOKN
 PA9    B    *R11
 
-* write the file: options from the block at SVOPT, entries from the block at
-* SVBK (count, entries) -> R0 = error (0: none)
+* write the file: the options, then the entries -> R0 = error (0: none)
 SAVEBK DECT R10
        MOV  R11,*R10
        LI   R1,>0012
-       BL   @PABSET
+       LI   R2,80
+       BL   @PABNEW
        BL   @DSRLNK
        MOV  R0,R0
        JNE  SB9
@@ -727,24 +828,23 @@ SAVEBK DECT R10
 SBO1   MOVB @OPTLET(R3),*R1+
        MOV  R3,R4
        SLA  R4,1
-       A    @SVOPT,R4
+       MOV  @OPTVAR(R4),R4
        MOV  *R4,R0
        AI   R0,'0'
        SWPB R0
        MOVB R0,*R1+
        INC  R3
-       CI   R3,5
+       CI   R3,NOPT
        JL   SBO1
        BL   @WRREC
        MOV  R0,R0
        JNE  SB8
        CLR  R6
 SB1    CLR  R0
-       MOV  @SVBK,R4
-       C    R6,*R4
+       C    R6,@BOOKN
        JHE  SB8
        MOV  R6,R0
-       BL   @SVENT
+       BL   @ENTRY
        MOV  R1,R2
        LI   R1,RECBUF
 SB2    MOVB *R2+,*R1+
@@ -753,7 +853,7 @@ SB2    MOVB *R2+,*R1+
        MOVB @BAR,*R1+
        MOV  R1,R7
        MOV  R6,R0
-       BL   @SVENT
+       BL   @ENTRY
        AI   R1,NSIZE
        MOV  R1,R2
        MOV  R7,R1
@@ -792,120 +892,33 @@ WRREC  DECT R10
        B    *R11
 
 ********************************************************************************
-* DSRLNK for the PAB at >1000: R0 = error code (0 none, >FF no such device)
-* the usual search: every card >1000->1F00, its device list at >4008, the
-* routine called from GPLWS with R12 = CRU base, >8354 = length of the
-* device name, >8356 = its end (the '.') in VDP
-********************************************************************************
-DSRLNK DECT R10
-       MOV  R11,*R10
-       LI   R0,PAB+9
-       BL   @VRA
-       MOVB @VDPRD,R1
-       SRL  R1,8
-       LI   R2,NAMBUF
-       CLR  R3
-DL1    MOVB @VDPRD,R4
-       CB   R4,@PERIOD
-       JEQ  DL2
-       MOVB R4,*R2+
-       INC  R3
-       DEC  R1
-       JNE  DL1
-DL2    MOV  R3,@>8354
-       LI   R0,PAB+10
-       A    R3,R0
-       MOV  R0,@>8356
-       LI   R0,WS
-       LI   R1,WSSAV
-       LI   R2,16
-DL3    MOV  *R0+,*R1+
-       DEC  R2
-       JNE  DL3
-       CLR  @DLFND
-       LWPI GPLWS
-       LI   R12,>0F00
-DLNXT  SBZ  0
-       AI   R12,>0100
-       CI   R12,>2000
-       JEQ  DLEND
-       MOV  R12,@>83D0
-       SBO  0
-       LI   R2,>4000
-       CB   *R2,@HAA
-       JNE  DLNXT
-       AI   R2,8
-DLL    MOV  *R2,R2
-       JEQ  DLNXT
-       MOV  R2,@>83D2
-       MOV  R2,R1
-       INCT R1
-       MOV  *R1+,R9
-       MOVB @>8355,R5
-       CB   R5,*R1+
-       JNE  DLNE
-       SRL  R5,8
-       LI   R6,NAMBUF
-DLC    CB   *R6+,*R1+
-       JNE  DLNE
-       DEC  R5
-       JNE  DLC
-       BL   *R9
-       JMP  DLNE
-       SBZ  0
-       SETO @DLFND
-       JMP  DLEND
-DLNE   SBO  0
-       MOV  @>83D2,R2
-       JMP  DLL
-DLEND  LI   R0,WSSAV
-       LI   R1,WS
-       LI   R2,16
-DL4    MOV  *R0+,*R1+
-       DEC  R2
-       JNE  DL4
-       LWPI WS
-       LI   R0,>FF
-       MOV  @DLFND,R1
-       JEQ  DL9
-       LI   R0,PAB+1
-       BL   @VRA
-       MOVB @VDPRD,R0
-       SRL  R0,13
-DL9    MOV  *R10+,R11
-       B    *R11
-
-********************************************************************************
-********************************************************************************
 * data (bank 0)
 ********************************************************************************
-HAA    BYTE >AA
-PERIOD TEXT '.'
 HASH   TEXT '#'
 BAR    TEXT '|'
-OPTLET TEXT 'PSENC'
+MCOLON TEXT ':'
+OPTLET TEXT 'PSENCA'
        EVEN
+NOPT   EQU  6
 * the options: variable, highest value, names of the values
-OPTVAR DATA PAL,STATL,ECHOM,CRLF,COLM
-OPTMAX DATA 2,1,2,1,1
-VALTAB DATA PALNAM,YNNAM,ECHNAM,CRNAM,COLNAM
-PABT   BYTE 0,>14
-       DATA VBUF
-       BYTE 80,0
-       DATA 0
-       BYTE 0,12
-       TEXT 'DSK1.BBSLIST'
-PABTE
+OPTVAR DATA PAL,STATL,ECHOM,CRLF,COLM,COLR
+OPTMAX DATA 2,1,2,1,2,1
+VALTAB DATA PALNAM,YNNAM,ECHNAM,CRNAM,COLNAM,YNNAM
+DEFFN  BYTE 11
+       TEXT 'DSK1.APENET'
+DEFFNE
+DEFXN  BYTE 5
+       TEXT 'DSK1.'
        EVEN
 
 * screens: (VDP address, text) ... >FFFF
 LINE40 BYTE >C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4
        BYTE >C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,>C4,0
        EVEN
-BKSCR  DATA 0*40,MTITLE,1*40,LINE40,2*40+1,MBOOK
+BKSCR  DATA 0*40,MTITLE,0*40+32,MQUIT,1*40,LINE40,2*40+1,MBOOK
        DATA 13*40+1,MADDR,21*40,LINE40,22*40+1,MKEYS1,23*40+1,MKEYS2,>FFFF
-OPSCR  DATA 0*40,MTITLO,1*40,LINE40,3*40+1,MOPT1,4*40+1,MOPT2,5*40+1,MOPT6
-       DATA 6*40+1,MOPT7,7*40+1,MOPT8,9*40+4,MOPT4,11*40+1,MOPT5
+OPSCR  DATA 0*40,MTITLO,1*40,LINE40,3*40+1,MOPT1,4*40+1,MOPT2,5*40+1,MOPT3
+       DATA 6*40+1,MOPT4,7*40+1,MOPT5,8*40+1,MOPT6,12*40+1,MFWOK
        DATA 21*40,LINE40,22*40+1,MKEYS3,>FFFF
 FWSCR  DATA 0*40,MTITLE,1*40,LINE40,3*40+1,MFWT,8*40+1,MFW2,9*40+1,MFW3
        DATA 21*40,LINE40,22*40+1,MKEYS4,>FFFF
@@ -917,4 +930,4 @@ FWSCR  DATA 0*40,MTITLE,1*40,LINE40,3*40+1,MFWT,8*40+1,MFW2,9*40+1,MFW3
        .endif
 
        COPY "font.a99"
-
+       COPY "inv0.a99"

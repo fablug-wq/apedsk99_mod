@@ -1,6 +1,6 @@
 ********************************************************************************
-* term.a99 - TI-NET TERM, bank 1: the terminal (telnet, ANSI, the screen in
-* 40 or 64 columns)
+* term.a99 - APEDSK TERMINAL, bank 1: the terminal (telnet, ANSI, the screen in
+* 40, 64 or 80 columns); the file transfers are in xmodem.a99
 ********************************************************************************
 ********************************************************************************
 * terminal
@@ -17,12 +17,37 @@ TERM   LI   R10,STACK
        CLR  @FRM
        CLR  @SECS
        CLR  @SRVECH
+       CLR  @ATDEP
+       BL   @SGR0
+       MOV  @PALV,@DEFATR
        LI   R0,24
        S    @STATL,R0
        MOV  R0,@ROWS
+       LI   R0,23
+       MOV  R0,@SROWN
        MOV  @COLM,R0
-       JNE  TI64
-       LI   R0,40                     * 40 columns: text mode, as the menus left it
+       JEQ  TI40
+       DEC  R0
+       JEQ  TI64
+       LI   R0,80                     * 80 columns (F18A): 25 rows, status row 25
+       MOV  R0,@COLS
+       MOV  R0,@ROWB
+       LI   R0,>2000
+       MOV  R0,@FILLB
+       LI   R0,25
+       MOV  R0,@ROWS
+       MOV  R0,@SROWN
+       LI   R0,STP80
+       MOV  R0,@STP
+       LI   R0,MANS80
+       MOV  R0,@SANSI
+       MOV  @COLR,R0
+       JEQ  TI80
+       LI   R0,>0070                  * colours: light grey on black
+       MOV  R0,@DEFATR
+TI80   BL   @F80INI
+       JMP  TI2
+TI40   LI   R0,40                     * 40 columns: text mode, as the menus left it
        MOV  R0,@COLS
        MOV  R0,@ROWB
        LI   R0,>2000
@@ -42,8 +67,15 @@ TI64   LI   R0,64                     * 64 columns: bitmap mode, 4 x 8 cells
        MOV  R0,@STP
        LI   R0,MANS64
        MOV  R0,@SANSI
+       LI   R0,F64ROM                 * the font: bank 2 -> the 32K
+       LI   R1,FONT64
+       LI   R2,2048
+       LI   R3,>6004
+       LI   R4,>6002
+       BL   @BKCOPY
        BL   @BMINIT
-TI2    BL   @STATUS
+TI2    BL   @MKATTR
+       BL   @STATUS
 
 TLOOP  BL   @KEY
        MOV  R0,R0
@@ -95,23 +127,56 @@ TL5    CLR  R1
 TCLOSD LI   R1,MCLOSD
        JMP  TEND
 TBAD   LI   R1,MBAD
-TEND   DECT R10
+TEND   BL   @CUROFF
+       BL   @SRMSG
+       BL   @WKEY
+THANG  LI   R0,>7300
+       BL   @NETCMD
+       MOV  @COLM,R0                  * 80 columns: the F18A back as it was
+       CI   R0,2
+       JNE  TH9
+       BL   @F80OFF
+TH9    B    @GOBOOK
+
+* the message R1 alone on the status row
+SRMSG  DECT R10
+       MOV  R11,*R10
+       BL   @ATNORM
+       DECT R10
        MOV  R1,*R10
-       BL   @CUROFF
-       LI   R5,23
+       MOV  @SROWN,R5
        LI   R2,1
        BL   @BLROWS
        MOV  *R10+,R1
-       LI   R5,23
+       MOV  @SROWN,R5
        CLR  R6
-       LI   R2,64
+       MOV  @COLS,R2
        BL   @SPRT
-TE1    BL   @KEY
+       BL   @ATREST
+       MOV  *R10+,R11
+       B    *R11
+
+* wait for a key
+WKEY   MOV  R11,R9
+WK1    BL   @KEY
        MOV  R0,R0
-       JEQ  TE1
-THANG  LI   R0,>7300
-       BL   @NETCMD
-       B    @GOBOOK
+       JEQ  WK1
+       B    *R9
+
+* the status row in the default colours, not inverse (they nest)
+ATNORM MOV  @ATDEP,R0
+       JNE  AN9
+       MOV  @INVM,@SVINV
+       MOV  @CATTR,@SVATR
+       CLR  @INVM
+       MOV  @DEFATR,@CATTR
+AN9    INC  @ATDEP
+       B    *R11
+ATREST DEC  @ATDEP
+       JNE  AR9
+       MOV  @SVINV,@INVM
+       MOV  @SVATR,@CATTR
+AR9    B    *R11
 
 * a key in the terminal -> what it sends; R0 = 1: hang up
 TKEY   DECT R10
@@ -220,23 +285,29 @@ LEY    LI   R0,1
 TMENU  DECT R10
        MOV  R11,*R10
        BL   @CUROFF
-       LI   R5,23
-       LI   R2,1
-       BL   @BLROWS
-       LI   R5,23
-       CLR  R6
        LI   R1,MMENU
-       LI   R2,64
-       BL   @SPRT
-TM1    BL   @KEY
-       MOV  R0,R0
-       JEQ  TM1
+       BL   @SRMSG
+       BL   @WKEY
        ANDI R0,>DF
        CI   R0,HANGK
-       JNE  TM2
+       JNE  TM1
        LI   R0,1
        JMP  TM9
-TM2    BL   @STATUS
+TM1    CI   R0,'D'
+       JNE  TM1U
+       BL   @XDOWN
+       JMP  TM2
+TM1U   CI   R0,'U'
+       JNE  TM2
+       BL   @XUP
+TM2    MOV  @STATL,R0                 * the status row back, or the row blank
+       JNE  TM3
+       BL   @ATNORM
+       MOV  @SROWN,R5
+       LI   R2,1
+       BL   @BLROWS
+       BL   @ATREST
+TM3    BL   @STATUS
        CLR  R0
 TM9    MOV  *R10+,R11
        B    *R11
@@ -247,14 +318,15 @@ STATUS MOV  @STATL,R0
        B    *R11
 ST1    DECT R10
        MOV  R11,*R10
-       LI   R5,23
+       BL   @ATNORM
+       MOV  @SROWN,R5
        LI   R2,1
        BL   @BLROWS
-       LI   R5,23
+       MOV  @SROWN,R5
        CLR  R6
        LI   R1,>DE
        BL   @PUTAT
-       LI   R5,23
+       MOV  @SROWN,R5
        LI   R6,1
        LI   R1,FIELD
        MOV  @STP,R3
@@ -271,6 +343,7 @@ ST1    DECT R10
        LI   R2,20
        BL   @SPRT
        BL   @STTIME
+       BL   @ATREST
        MOV  *R10+,R11
        B    *R11
 
@@ -291,12 +364,14 @@ SM1    DECT R10
        BL   @DEC2
        CLR  R0
        MOVB R0,*R1
-       LI   R5,23
+       BL   @ATNORM
+       MOV  @SROWN,R5
        MOV  @STP,R3
        MOV  @4(R3),R6
        LI   R1,TSTR
        LI   R2,5
        BL   @SPRT
+       BL   @ATREST
        MOV  *R10+,R11
        B    *R11
 
@@ -482,6 +557,11 @@ AN1Z   CLR  *R0+
        B    *R11
 AN1A   CI   R1,'c'
        JNE  AN1B
+       DECT R10
+       MOV  R11,*R10
+       BL   @SGR0
+       BL   @MKATTR
+       MOV  *R10+,R11
        B    @CLRALL
 AN1B   CI   R1,'7'
        JNE  AN1C
@@ -547,7 +627,7 @@ AN2F   MOV  *R0+,R4
 * R1 final, R2 first parameter, R3 same (at least 1)
 CSITAB DATA 'A',CUU,'B',CUD,'C',CUF,'D',CUB,'H',CUP,'f',CUP
        DATA 'G',CHA,'d',VPA,'J',ED,'K',EL,'s',SAVEC,'u',RESTC
-       DATA 'n',DSR6,0
+       DATA 'n',DSR6,'m',SGR,0
 
 CUU    S    R3,@ROW
        JMP  CLAMP
@@ -629,6 +709,82 @@ DS2    INC  R1
        MOV  *R10+,R11
        B    *R11
 
+* SGR: 0 reset, 1 / 22 bold, 7 / 27 inverse, 30-37 39 colour, 40-47 49 background
+SGR    DECT R10
+       MOV  R11,*R10
+       CLR  R5
+SG1    MOV  R5,R4
+       SLA  R4,1
+       MOV  @PAR(R4),R0
+       JNE  SG2
+       BL   @SGR0
+       JMP  SG9
+SG2    LI   R1,SGRTAB
+SG3    MOV  *R1+,R2
+       JEQ  SG5
+       MOV  *R1+,R3
+       MOV  *R1+,R4
+       C    R0,R2
+       JNE  SG3
+       MOV  R4,*R3
+       JMP  SG9
+SG5    CI   R0,30
+       JL   SG9
+       CI   R0,37
+       JH   SG6
+       AI   R0,-30
+       MOV  R0,@SGRFG
+       JMP  SG9
+SG6    CI   R0,40
+       JL   SG9
+       CI   R0,47
+       JH   SG9
+       AI   R0,-40
+       MOV  R0,@SGRBG
+SG9    INC  R5
+       C    R5,@NP
+       JLE  SG1
+       BL   @MKATTR
+       MOV  *R10+,R11
+       B    *R11
+SGRTAB DATA 1,SGRBLD,1,22,SGRBLD,0,7,INVM,1,27,INVM,0
+       DATA 39,SGRFG,-1,49,SGRBG,-1,0
+SGR0   CLR  @INVM
+       CLR  @SGRBLD
+       SETO @SGRFG
+       SETO @SGRBG
+       B    *R11
+
+* the colour byte of the 80 columns: ANSI colours (the palette of F80INI) or
+* the menus' palette; inverse swaps the two
+MKATTR MOV  @COLR,R0
+       JEQ  MK5
+       LI   R1,7
+       MOV  @SGRFG,R0
+       JLT  MK1
+       MOV  R0,R1
+MK1    MOV  @SGRBLD,R0
+       JEQ  MK2
+       ORI  R1,8
+MK2    CLR  R2
+       MOV  @SGRBG,R0
+       JLT  MK6
+       MOV  R0,R2
+       JMP  MK6
+MK5    MOV  @PALV,R1
+       MOV  R1,R2
+       SRL  R1,4
+       ANDI R2,>000F
+MK6    MOV  @INVM,R0
+       JEQ  MK7
+       MOV  R1,R0
+       MOV  R2,R1
+       MOV  R0,R2
+MK7    SLA  R1,4
+       SOC  R2,R1
+       MOV  R1,@CATTR
+       B    *R11
+
 * erase in display: 0 to the end, 1 from the start, 2 all
 ED     DECT R10
        MOV  R11,*R10
@@ -680,7 +836,7 @@ EL9    MOV  *R10+,R11
        B    *R11
 
 ********************************************************************************
-* the screen, 40 columns (text mode) or 64 (bitmap): rows R5, columns R6
+* the screen, 40 / 80 columns (text modes) or 64 (bitmap): rows R5, columns R6
 ********************************************************************************
 * row R5 from column R6 to the end of the line
 BLEOL  MOV  @COLS,R2
@@ -699,14 +855,13 @@ BN1    MOV  R6,R0
        MOV  @COLS,R2
        S    R6,R2
 BN2    MOV  @COLM,R0
-       JNE  BN4
+       DEC  R0
+       JEQ  BN4
        MOV  R5,R3
-       LI   R0,40
-       MPY  R0,R3
+       MPY  @ROWB,R3
        A    R6,R4
        MOV  R4,R0
-       LI   R1,>2000
-       B    @VFILL
+       JMP  BLFILL
 BN4    MOV  R6,R6
        JNE  BN5
        C    R2,@COLS
@@ -736,7 +891,28 @@ BR1    MOV  R5,R3
        MOV  R2,R3
        MPY  @ROWB,R3
        MOV  R4,R2
+       MOV  @COLM,R1
+       DEC  R1
+       JNE  BLFILL
        MOV  @FILLB,R1
+       B    @VFILL
+* text modes: R2 spaces from R0; in 80 columns their colour bytes too
+BLFILL MOV  @COLM,R1
+       JEQ  BF2
+       DECT R10
+       MOV  R11,*R10
+       DECT R10
+       MOV  R0,*R10
+       DECT R10
+       MOV  R2,*R10
+       AI   R0,ATR80
+       MOV  @CATTR,R1
+       SWPB R1
+       BL   @VFILL
+       MOV  *R10+,R2
+       MOV  *R10+,R0
+       MOV  *R10+,R11
+BF2    LI   R1,>2000
        B    @VFILL
 
 * clear the BBS rows and home the cursor
@@ -807,14 +983,31 @@ LF     MOV  @ROW,R0
        JHE  SCROLL
        MOV  R0,@ROW
        B    *R11
-* one row up: row by row through SCRBUF (ROWB bytes a row in both modes)
+* one row up: row by row through SCRBUF (ROWB bytes a row in all the modes);
+* in 80 columns the colour bytes too
 SCROLL DECT R10
+       MOV  R11,*R10
+       CLR  R6
+       BL   @SCRL1
+       MOV  @COLM,R0
+       CI   R0,2
+       JNE  SC8
+       LI   R6,ATR80
+       BL   @SCRL1
+SC8    MOV  @ROWS,R5
+       DEC  R5
+       LI   R2,1
+       BL   @BLROWS
+       MOV  *R10+,R11
+       B    *R11
+SCRL1  DECT R10
        MOV  R11,*R10
        LI   R5,1
 SC1    C    R5,@ROWS
        JHE  SC9
        MOV  R5,R3
        MPY  @ROWB,R3
+       A    R6,R4
        MOV  R4,R0
        LI   R1,SCRBUF
        MOV  @ROWB,R2
@@ -822,23 +1015,44 @@ SC1    C    R5,@ROWS
        MOV  R5,R3
        DEC  R3
        MPY  @ROWB,R3
+       A    R6,R4
        MOV  R4,R0
        LI   R1,SCRBUF
        MOV  @ROWB,R2
        BL   @VMBW
        INC  R5
        JMP  SC1
-SC9    MOV  @ROWS,R5
-       DEC  R5
-       LI   R2,1
-       BL   @BLROWS
-       MOV  *R10+,R11
+SC9    MOV  *R10+,R11
        B    *R11
 
 * character R1 (low byte) at row R5, column R6; keeps R5, R6
 PUTAT  MOV  @COLM,R0
-       JNE  BPUT
+       JEQ  PT40
+       DEC  R0
+       JEQ  BPUT
+       MOV  R11,R7                    * 80 columns: the character and its colour
        MOV  R5,R3
+       LI   R0,80
+       MPY  R0,R3
+       A    R6,R4
+       MOV  R4,R0
+       BL   @VWA
+       SWPB R1
+       MOVB R1,@VDPWD
+       MOV  R4,R0
+       AI   R0,ATR80
+       BL   @VWA
+       MOVB @CATTR+1,@VDPWD
+       B    *R7
+PT40   MOV  @INVM,R0                  * 40 columns: inverse from inverse.py
+       JEQ  PT41
+       CI   R1,32
+       JL   PT41
+       CI   R1,126
+       JH   PT41
+       MOVB @INVMAP-32(R1),R1
+       SRL  R1,8
+PT41   MOV  R5,R3
        LI   R0,40
        MPY  R0,R3
        A    R6,R4
@@ -853,19 +1067,26 @@ BPUT   DECT R10
        SLA  R3,3
        AI   R3,FONT64
        BL   @BADDR
-       LI   R2,BTMP
+       CLR  R12
+       MOV  @INVM,R0
+       JEQ  BP1
+       LI   R12,>F000
+BP1    LI   R2,BTMP
        LI   R4,8
        MOV  R6,R0
        ANDI R0,1
        JNE  BP3
-BP2    MOVB *R2,R0
+BP2    MOVB *R3+,R7
+       XOR  R12,R7
+       MOVB *R2,R0
        ANDI R0,>0F00
-       SOCB *R3+,R0
+       SOCB R7,R0
        MOVB R0,*R2+
        DEC  R4
        JNE  BP2
        JMP  BP5
 BP3    MOVB *R3+,R7
+       XOR  R12,R7
        SRL  R7,4
        MOVB *R2,R0
        ANDI R0,>F000
@@ -951,10 +1172,10 @@ CURSHW MOV  @CURON,R0
        MOV  R5,@CURR
        MOV  R6,@CURC
        MOV  @COLM,R0
-       JNE  CS2
+       DEC  R0
+       JEQ  CS2
        MOV  R5,R3
-       LI   R0,40
-       MPY  R0,R3
+       MPY  @ROWB,R3
        A    R6,R4
        MOV  R4,R0
        MOV  R0,@CURAD
@@ -972,7 +1193,8 @@ CUROFF MOV  @CURON,R0
        JEQ  CU9
        CLR  @CURON
        MOV  @COLM,R0
-       JNE  CO2
+       DEC  R0
+       JEQ  CO2
        MOV  @CURAD,R0
        MOVB @CURCH,R1
        B    @VSBW
@@ -1027,6 +1249,82 @@ BMI1   MOVB R1,@VDPWD
        BL   @VFILL
        MOV  *R10+,R11
        B    *R11
+
+* 80 columns (F18A): unlocked, 80-column text mode with 30 rows (25 for the BBS,
+* the status row, 4 blank), a colour byte for each position (R50 >02);
+* names >0000, patterns >2000 (the menus' font, copied), colours >2800
+F80INI DECT R10
+       MOV  R11,*R10
+       CLR  R5
+FI1    LI   R0,PATTAB
+       A    R5,R0
+       LI   R1,SCRBUF
+       LI   R2,256
+       BL   @VMBR
+       LI   R0,PAT80
+       A    R5,R0
+       LI   R1,SCRBUF
+       LI   R2,256
+       BL   @VMBW
+       AI   R5,256
+       CI   R5,2048
+       JL   FI1
+       LI   R0,>F000
+       MOVB R0,@>83D4                * KSCAN restores VDP R1 from here
+       LI   R3,F80REG
+FI2    MOV  *R3+,R0
+       JEQ  FI3
+       BL   @VWTR
+       JMP  FI2
+FI3    MOV  @COLR,R0
+       JEQ  FI4
+       LI   R1,PALCGA                 * the 16 ANSI colours, black border
+       BL   @PALSET
+       LI   R0,>0700
+       JMP  FI5
+FI4    MOV  @PALV,R0
+       AI   R0,>0700
+FI5    BL   @VWTR
+       CLR  R0
+       LI   R1,>2000
+       LI   R2,2400
+       BL   @VFILL
+       LI   R0,ATR80
+       MOV  @DEFATR,R1
+       SWPB R1
+       LI   R2,2400
+       BL   @VFILL
+       MOV  *R10+,R11
+       B    *R11
+F80REG DATA >391C,>391C,>0004,>01F0,>0200,>03A0,>0404,>3140,>3202,0
+* back: the palette of the 9918, the registers reset (and locked)
+F80OFF DECT R10
+       MOV  R11,*R10
+       MOV  @COLR,R0
+       JEQ  FO1
+       LI   R1,PALTMS
+       BL   @PALSET
+FO1    LI   R0,>3280
+       BL   @VWTR
+       MOV  *R10+,R11
+       B    *R11
+* the 16 palette registers from R1 (two bytes each: 0R GB)
+PALSET DECT R10
+       MOV  R11,*R10
+       LI   R0,>2FC0
+       BL   @VWTR
+       LI   R2,32
+PS1    MOVB *R1+,@VDPWD
+       DEC  R2
+       JNE  PS1
+       LI   R0,>2F00
+       BL   @VWTR
+       MOV  *R10+,R11
+       B    *R11
+PALCGA BYTE >00,>00,>0A,>00,>00,>A0,>0A,>50,>00,>0A,>0A,>0A,>00,>AA,>0A,>AA
+       BYTE >05,>55,>0F,>55,>05,>F5,>0F,>F5,>05,>5F,>0F,>5F,>05,>FF,>0F,>FF
+PALTMS BYTE >00,>00,>00,>00,>02,>C3,>05,>D6,>05,>4F,>07,>6F,>0D,>54,>04,>EF
+       BYTE >0F,>54,>0F,>76,>0D,>C3,>0E,>D6,>02,>B2,>0C,>5C,>0C,>CC,>0F,>FF
 
 ********************************************************************************
 * the network commands of the terminal
@@ -1114,9 +1412,12 @@ NAWS   BYTE 4,>FF,>FA,31,0
 * status row: host length, then the columns of host... ANSI, time, F9
 STP40  DATA 14,16,27,33
 STP64  DATA 30,33,45,57
+STP80  DATA 30,33,58,72
 MANS40 TEXT 'ANSI 40x23'
        BYTE 0
 MANS64 TEXT 'ANSI 64x23'
+       BYTE 0
+MANS80 TEXT 'ANSI 80x25'
        BYTE 0
 MF9    TEXT 'F9 MENU'
        BYTE 0
@@ -1128,4 +1429,4 @@ MF9    TEXT 'F9 MENU'
        COPY "term_en.a99"
        .endif
 
-       COPY "font64.a99"
+       COPY "inv1.a99"

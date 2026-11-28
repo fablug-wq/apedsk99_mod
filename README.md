@@ -2,12 +2,12 @@
 
 A modification of [APEDSK99](https://github.com/jambuur/APEDSK99) by Jochen Buur, the Arduino-based disk controller for the TI-99/4A.
 
-**This branch** adds to the firmware four commands that let a TI program connect to a telnet BBS (or any TCP service) through the APEDSK99 Ethernet shield, and **TI-NET TERM**, a terminal cartridge that uses them. The `main` branch has the virtual printer only.
+**This branch** adds to the firmware four commands that let a TI program connect to a telnet BBS (or any TCP service) through the APEDSK99 Ethernet shield, and **APEDSK TERMINAL**, a terminal cartridge that uses them. The `main` branch has the virtual printer only.
 
 | Part | Status |
 |---|---|
 | Firmware commands >70–>73 (CONNECT, SEND, RECV, CLOSE) | done, tested in the PC harness and in the co-simulation; not yet tested on real hardware |
-| TI-NET TERM 0.3 (`ROM/TINET8.bin` English, `ROM/TINETI8.bin` Italian; 16K bank-switched cartridge, needs 32K; 0.2 for 8K loaders in `ROM/v0.2`) | 40 or 64 columns (64 in bitmap mode on the plain VDP, Tasword 3 font), telnet, ANSI, CP437, address book on `DSK1.BBSLIST`, local echo and CR LF for plain services; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
+| APEDSK TERMINAL 1.0 (`ROM/APETERM8.bin`, English; 32K bank-switched cartridge, needs 32K; the Italian ROM with `ROM/build.sh it`; 0.2 for 8K loaders in `ROM/v0.2`) | 40 or 64 columns on the TMS9918 (64 in bitmap mode, Tasword 3 font), 80 × 25 with the 16 ANSI colours on the F18A; telnet, ANSI, CP437, inverse; XMODEM download and upload (TIFILES files keep their type); address book and options with LOAD / SAVE; local echo and CR LF for plain services; tested on the emulated console with the real firmware and DSR; not yet on real hardware |
 | DSRs | unchanged: the commands work with both `APEDSK99.DSR` and `APEDSKPR.DSR` |
 
 The firmware is compatible with the existing DSRs, and printing, `FGET`, `FPUT` and `TIME` keep working, also during a telnet session. It adds about 390 bytes of flash (about 440 left on the Uno). Details: [Network terminal commands](#network-terminal-commands-work-in-progress) below.
@@ -32,8 +32,8 @@ The branch keeps everything from `main`: a second DSR, **APEDSKPR**, that emulat
 | `harness/` | PC test harness: the sketch on mock hardware, a fake telnet BBS, flash measurement |
 | `docs/BBS-terminal.md` | design notes for the network terminal (firmware and terminal program) |
 | `docs/terminal-mockup.html` | the early mockups of the terminal screens |
-| `docs/screenshots/` | TI-NET TERM in the emulator |
-| `ROM/` | TI-NET TERM: source (`tinet.a99`, `menu.a99`, `term.a99`), font generators, build script, tests, the ROMs (`TINET8.bin`, `TINETI8.bin`; 0.2 in `v0.2/`) |
+| `docs/screenshots/` | APEDSK TERMINAL in the emulator |
+| `ROM/` | APEDSK TERMINAL: source (`apeterm.a99`, `menu.a99`, `term.a99`, `xmodem.a99`), font and inverse generators, build script, tests, the ROM (`APETERM8.bin`; 0.2 in `v0.2/`) |
 | `harness/cosim/` | co-simulation: the real firmware as the APEDSK99 card of an emulated TI |
 
 The first commit holds the original files unchanged, so a `git diff` against it shows exactly what was modified.
@@ -113,7 +113,7 @@ Arduino errors are passed back through `CALLST` and become error 6 in the PAB. U
 
 ## Network terminal commands (work in progress)
 
-Four firmware commands let a TI program open a TCP connection, for example to a telnet BBS. The terminal cartridge that uses them, TI-NET TERM, and its design: `docs/BBS-terminal.md`. They need no DSR support: the program writes `CALLBF` and `ACOMND` directly, so they work with either DSR. Bytes are raw (no TI BASIC screen bias). The firmware is only a pipe: telnet negotiation and the screen are up to the TI program.
+Four firmware commands let a TI program open a TCP connection, for example to a telnet BBS. The terminal cartridge that uses them, APEDSK TERMINAL, and its design: `docs/BBS-terminal.md`. They need no DSR support: the program writes `CALLBF` and `ACOMND` directly, so they work with either DSR. Bytes are raw (no TI BASIC screen bias). The firmware is only a pipe: telnet negotiation and the screen are up to the TI program.
 
 | Code | Command | TI → `CALLBF` | Result |
 |---|---|---|---|
@@ -126,19 +126,19 @@ Four firmware commands let a TI program open a TCP connection, for example to a 
 - A drop by the other side shows up as RECV = >FF once all received data has been read. Right after the drop SEND may still report success.
 - Detecting older firmware: write >FE to `CALLBF` and send RECV. Older firmware ignores the command and leaves the >FE in place.
 
-## TI-NET TERM
+## APEDSK TERMINAL
 
-Load `ROM/TINET8.bin` (English) or `ROM/TINETI8.bin` (Italian) as a 16K bank-switched cartridge (non-inverted, file name ending in 8) on a loader that takes one (FinalGROM99, a flash cartridge, an emulator); for 8K-only loaders, `ROM/v0.2/TINETC.bin` or `TINETITC.bin`. With the 32K expansion and the firmware of this branch it appears as TI-NET TERM in the menu. Usage, keys and the `DSK1.BBSLIST` format: `docs/BBS-terminal.md`.
+Load `ROM/APETERM8.bin` as a 32K bank-switched cartridge (non-inverted, file name ending in 8) on a loader that takes one (FinalGROM99, a flash cartridge, an emulator); for 8K-only loaders, the older `ROM/v0.2/TINETC.bin`. With the 32K expansion and the firmware of this branch it appears as APEDSK TERMINAL in the menu. With an F18A it offers 80 columns and colours. Usage, keys, XMODEM and the file of LOAD / SAVE (`DSK1.APENET` by default): `docs/BBS-terminal.md`.
 
 ## Building
 
 - **DSR:** `xas99.py -R -b TI/APEDSKPR.a99 -o APEDSKPR.bin` ([xdt99](https://github.com/endlos99/xdt99)), then pad with zeros to 8192 bytes. Assembled the same way, the original source is byte-identical to `APEDSK99.DSR`. The DSR currently uses all but 134 bytes of its space.
 - **Sketch:** Arduino IDE, board Uno. It uses about 98.5% of flash.
-- **TI-NET TERM:** `ROM/build.sh` (xdt99's `xas99.py`; `XDT99` = its folder): fonts, assembly of both languages (two banks each), padding and joining into 16K.
+- **APEDSK TERMINAL:** `ROM/build.sh` (xdt99's `xas99.py`; `XDT99` = its folder): fonts, inverse characters, assembly (four banks), padding and joining into 32K: `APETERM8.bin`; `ROM/build.sh it` for the Italian `APETERMI8.bin`.
 - **PC harness:** `harness/run.sh` compiles the sketch with g++ against mock hardware (DSR RAM, SD card folder, Ethernet on host sockets, FTP folder, fixed NTP time) and tests the terminal commands against `harness/fake_bbs.py`, a fake telnet BBS. The hardware itself (timing, SPI, the W5100) is not simulated.
 
 ## Credits
 
 APEDSK99 is the work of Jochen Buur ([github.com/jambuur/APEDSK99](https://github.com/jambuur/APEDSK99)), released as freeware without restrictions. The disk controller code is based on Thierry Nouspikel's commented disassembly.
 
-The 64-column font of TI-NET TERM (`ROM/font64.py`, `ROM/tasword.py`) is derived from Tasword 3 by Damien Guard ([damieng.com/typography/zx-origins](https://damieng.com/typography/zx-origins/)), licensed [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); the derived font is under the same licence.
+The 64-column font of APEDSK TERMINAL (`ROM/font64.py`, `ROM/tasword.py`) is derived from Tasword 3 by Damien Guard ([damieng.com/typography/zx-origins](https://damieng.com/typography/zx-origins/)), licensed [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); the derived font is under the same licence.
