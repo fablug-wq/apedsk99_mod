@@ -45,6 +45,19 @@ def blank_dsk(name):
     return bytes(img)
 
 
+def extended_basic():
+    """the Extended BASIC cartridge: XB_CART, else js99er's library (not in the copy
+    ti99-headless 0.2.2 carries, but in a js99er clone of an older setup)"""
+    if os.environ.get("XB_CART"):
+        return os.environ["XB_CART"]
+    tail = os.path.join("src", "assets", "software", "extended_basic.rpk")
+    for root in (th.setup_env.js99er_dir(),
+                 os.path.join(os.environ.get("TI99HEADLESS", ""), "vendor", "js99er")):
+        if os.path.isfile(os.path.join(root, tail)):
+            return os.path.join(root, tail)
+    return None
+
+
 class Rig:
     """an SD card folder, an FTP folder, the fake BBS, and the card options"""
     def __init__(self):
@@ -125,7 +138,9 @@ class TestCosim(unittest.TestCase):
     def test_nettest(self):
         """NETTEST (Extended BASIC) against the fake BBS: connect, echo, other commands
         during the session, the BBS hanging up"""
-        xb = os.path.join(th.setup_env.js99er_dir(), "src", "assets", "software", "extended_basic.rpk")
+        xb = extended_basic()
+        if not xb:
+            self.skipTest("Extended BASIC cartridge not found: set XB_CART to an .rpk or .bin")
         with th.Machine(xb, disk="NONE", cards=[self.rig.card()]) as m:
             m.menu(2)
             m.frames(120)
