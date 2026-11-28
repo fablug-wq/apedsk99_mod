@@ -71,10 +71,12 @@ It needs the 32K memory expansion and the firmware of this branch, and works wit
    - FCTN-8 adds the address typed in the field as a new entry: the port if it has none, then the name (up to 14 characters).
    - FCTN-3 deletes an entry (it asks which one).
    - FCTN-5 LOAD and FCTN-6 SAVE: the address book and the options, from or to the file named on the row that appears, `DSK1.APENET` at first, then the last name used. ENTER does it, FCTN-9 gives up. Adding and deleting change only the list in memory until SAVE.
-   - FCTN-9 opens the options, FCTN-= goes back to the title screen.
+   - FCTN-9 opens the options.
+   - FCTN-= (here, in the options, in a session) leaves: it hangs up if needed and puts the F18A back as at power-up (unlocked, the 9918 palette, its registers reset), so the title screen and whatever runs next find it clean.
 4. During a session: what you type goes to the BBS. FCTN-9 opens the menu on the status row:
    - H hangs up and goes back to the address book (in both languages);
    - D downloads, U uploads a file (XMODEM, below);
+   - Q hangs up and leaves, as FCTN-=;
    - any other key carries on.
 
    When the BBS hangs up, the status row says so and any key goes back.
@@ -120,9 +122,9 @@ As implemented in `TNBYTE` (the `Telnet` struct in `harness/test_terminal.cpp` i
 
 ### Screen
 
-- **40 columns**: TMS9918 text mode. Characters 32–95 come from the console GROM (>06B4), 96–255 from the ROM: true lower case, CP437 accented letters, box drawing (single, double, mixed), blocks, shades, some symbols.
+- **40 columns**: TMS9918 text mode. Characters 32–95 come from the console GROM (>06B4), 96–255 from the ROM: true lower case, CP437 accented letters, box drawing (single, double, mixed), blocks, shades, some symbols. The GROM's 7 rows go into rows 0–6 of the pattern (not 1–7, as the console does), so capitals, digits and lower case share one baseline (row 6) and the descenders of g, p, q, y use row 7; the accented capitals are drawn on the same baseline with the accent on row 0.
 - **64 columns**: TMS9918 bitmap mode (graphics II), 4×8-pixel cells, two per 8×8 pattern, on the plain VDP. Font: [Tasword 3](https://damieng.com/typography/zx-origins/tasword/) by Damien Guard, licensed CC BY-SA 3.0, from its ZX Spectrum 64-column original; accented letters, `` ` ``, `^` and box drawing added in `ROM/font64.py`. The colour table is 2K shared by the three thirds of the screen (R3 = >9F), so the disk buffers at the top of VDP RAM stay untouched. Two colours. Writing a character is a read-modify-write of 8 bytes, so this mode is slower (see Speed).
-- **80 columns (F18A)**: the F18A's 80-column text mode, unlocked, with 30 rows (R49 >40): 25 for the BBS (NAWS 80×25, as the PC screens ANSI art is drawn for), the status row, 4 blank. A colour byte for each position (R50 >02, foreground in the high nibble): names at >0000, patterns at >2000 (the 40-column font, copied), colours at >2800. With ANSI colours the F18A palette gets the 16 colours of the PC (the 9918 palette is put back when the session ends, and the F18A's registers are reset, which also locks it again); without them the two colours of the palette option. The F18A is detected at start: unlocked, status register 1 = >E0, then its registers reset; on a 9918 those writes land in registers that the menus set again.
+- **80 columns (F18A)**: the F18A's 80-column text mode, unlocked, with 30 rows (R49 >40): 25 for the BBS (NAWS 80×25, as the PC screens ANSI art is drawn for), the status row, 4 blank. A colour byte for each position (R50 >02, foreground in the high nibble): names at >0000, patterns at >2000 (the 40-column font, copied), colours at >2800. With ANSI colours the F18A palette gets the 16 colours of the PC (the 9918 palette is put back when the session ends, and the F18A's registers are reset, which also locks it again); without them the two colours of the palette option. The F18A is detected at start: unlocked, status register 1 = >E0, then its registers reset; on a 9918 those writes land in registers that the menus set again. A write to VR57 while the F18A is unlocked locks it, so every unlock starts with VR50 >80 (unlocked: registers reset and locked; locked: ignored), then >1C twice: this way it works whatever state a previous program or a soft reset left.
 - **Inverse (SGR 7, 27)**: in 80 columns the two colours of the position are swapped. In 64 columns the cell is inverted. In 40 columns every code 32–255 already has a glyph, so inverse uses the 49 codes never drawn (0–31, 127 and the empty places of the font): the space, the capitals, the digits and `. , : ; - ! ? / ( ) ' >`. A lower-case letter in inverse shows as its capital in inverse, as on the terminals of the time; other characters show as they are (`ROM/inverse.py`).
 - **Colours (SGR 30–37, 40–47, 39, 49, 1, 22, 0)**: 80 columns only; bold is the bright colour. In 40 and 64 columns they are read and ignored. Erasing uses the current colours.
 - **Status row** (optional): the host, `ANSI 40x23`, `ANSI 64x23` or `ANSI 80x25`, the connection time, `F9 MENU`; in the default colours. With it the BBS gets 23 rows in 40 and 64 columns.
@@ -154,7 +156,7 @@ XMODEM in the emulator: 896 bytes (a TIFILES file of 3 sectors, 7 blocks) in abo
 ## Testing
 
 - `harness/cosim/`: **co-simulation**. The real sketch runs as a process (`firmware_server`) and is the firmware of an APEDSK99 card in an emulated TI-99/4A ([ti99-headless](https://github.com/fablug-wq/ti99-headless) 0.2.0 or later: js99er with the real console ROM and GROM). Every word the TI writes into >4000–>5FFF runs `loop()` once, as the GAL signals on the hardware (A15 = 0: once per word), and the TI waits meanwhile. So the real DSR (disks, CALLs) and the terminal commands run as on the machine, with the SD card and FTP server as folders and the network through the host. `test_cosim.py`: TI BASIC SAVE/OLD; `NETTEST` in Extended BASIC against the fake BBS.
-- `ROM/test_rom.py`: APEDSK TERMINAL in the co-simulation, 16 tests:
+- `ROM/test_rom.py`: APEDSK TERMINAL in the co-simulation, 17 tests:
   - the address book screen;
   - a session: negotiation, ANSI and CP437 on screen, the ANSI test page with `ESC[6n`, the codes the keys send, FCTN-9 H;
   - 5000 bytes; the BBS hanging up; a refused connection;
@@ -166,6 +168,8 @@ XMODEM in the emulator: 896 bytes (a TIFILES file of 3 sectors, 7 blocks) in abo
   - 64 columns: bitmap registers, NAWS 64×23, the ANSI page read back from the bitmap, inverse, scrolling, back to text mode;
   - 80 columns with the F18A: registers, NAWS 80×25, the colour byte of each position (ANSI colours, bold, background, inverse), the ANSI page, scrolling, back to 40 columns; then two colours;
   - XMODEM: TIFILES download in blocks of 128 and 1K (the second time replacing the file), upload back, byte for byte the same; a plain file to DIS/FIX 128 and back; a file not there; a bad name;
+  - leaving with FCTN-= from a session, Q from the session menu and FCTN-= from the address book, after 80 columns with colours: the title screen identical, pixel by pixel, to the one at power-up;
+  - the baseline of capitals, digits, lower case and accented capitals;
   - the Italian ROM; the firmware of `main` (the ROM says it lacks the commands).
 
   `ROM/screenshots.py` makes `docs/screenshots/`.

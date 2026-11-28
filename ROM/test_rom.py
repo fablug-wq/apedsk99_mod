@@ -143,6 +143,14 @@ class TestRom(unittest.TestCase):
             self.assertEqual(r[0][:20], " APEDSK TERMINAL 1.0")
             self.assertIn("F= QUIT", r[0])
             self.assertEqual(r[4], "")                                 # nothing read from disk
+            def rows_of(code):                                         # the rows a pattern uses
+                p = m.vram(0x800 + code * 8, 8)
+                return [y for y in range(8) if p[y]]
+            for c in "HAx1.":                                          # one baseline: row 6
+                self.assertEqual(max(rows_of(ord(c))), 6, c)
+            self.assertEqual(max(rows_of(ord("g"))), 7)                # a descender below it
+            for code in (142, 144, 153, 165):                          # accented capitals
+                self.assertEqual(max(rows_of(code)), 6, code)
             self.assertIn("OR TYPE HOST[:PORT]", r[13])
             self.assertEqual(m.vregs()[1] & 0x18, 0x10)                 # text mode
             m.type("abc{LEFT}")                                       # FCTN-S deletes
@@ -584,6 +592,36 @@ class TestRom(unittest.TestCase):
             m.type(" ")
             m.type("QUIT\r")
             wait_for(m, "Closed by the BBS")
+
+    def test_quit(self):
+        """FCTN-= in a session, Q in the session menu, FCTN-= in the address book: after
+        80 columns with colours on the F18A, the title screen exactly as at power-up"""
+        with th.Machine(ROM, disk="NONE", cards=[self.rig.card()], vdp="F18A") as m:
+            m.frames(120)
+            title = m.screenshot()
+            for how in ("FCTN-=", "Q", "book"):
+                m.menu(2)
+                wait_for(m, "ADDRESS BOOK", 300)
+                m.press("FCTN", "9")
+                wait_for(m, "OPTIONS")
+                m.type("55")
+                to_book(m)
+                m.type(HOST + "\r")
+                wait80(m, "READY")
+                if how == "FCTN-=":
+                    m.press("FCTN", "=")
+                elif how == "Q":
+                    m.press("FCTN", "9")
+                    wait80(m, "Q=QUIT")
+                    m.type("Q")
+                else:
+                    m.press("FCTN", "9")
+                    wait80(m, "H=HANG UP")
+                    m.type("H")
+                    wait_for(m, "ADDRESS BOOK")
+                    m.press("FCTN", "=")
+                m.frames(120)
+                self.assertEqual(m.screenshot(), title, how)
 
     def test_italian(self):
         """the Italian ROM (-D ITALIAN): same code, other texts, H hangs up as in English"""

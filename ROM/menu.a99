@@ -43,13 +43,10 @@ DEFOPT LI   R0,1
        B    *R11
 
 * F18A? unlock, status register 1 = >E0, then reset its registers (locks it)
-* (on a 9918 the writes land in R1, R7 and R2, which VINIT rewrites)
+* (on a 9918 the writes land in R1, R2 and R7, which VINIT rewrites)
 F18DET DECT R10
        MOV  R11,*R10
-       LI   R0,>391C
-       BL   @VWTR
-       LI   R0,>391C
-       BL   @VWTR
+       BL   @F18UNL
        LI   R0,>0F01
        BL   @VWTR
        MOVB @VDPSTA,R1
@@ -142,7 +139,36 @@ BK6    CI   R0,32
        CLR  R2
        MOVB R2,@FIELD(R1)
        JMP  BKFLD
-BKQUIT BLWP @>0000
+* FCTN-=: the F18A as at power-up (unlocked, the 9918 palette, its registers
+* reset, which locks it), then the title screen
+BKQUIT MOV  @F18,R0
+       JEQ  BQ9
+       BL   @F18UNL
+       LI   R0,>2FC0
+       BL   @VWTR
+       LI   R1,PALT0
+       LI   R2,32
+BQ1    MOVB *R1+,@VDPWD
+       DEC  R2
+       JNE  BQ1
+       LI   R0,>2F00
+       BL   @VWTR
+       LI   R0,>3280
+       BL   @VWTR
+BQ9    BLWP @>0000
+* F18A unlocked from any state: a write to VR57 while it is unlocked locks it,
+* so first VR50 >80 (unlocked: registers reset and locked; locked: ignored,
+* or R2 = >80 on a 9918 / an F18A without 80 columns), then >1C twice
+F18UNL MOV  R11,R9
+       LI   R0,>3280
+       BL   @VWTR
+       LI   R0,>391C
+       BL   @VWTR
+       LI   R0,>391C
+       BL   @VWTR
+       B    *R9
+PALT0  BYTE >00,>00,>00,>00,>02,>C3,>05,>D6,>05,>4F,>07,>6F,>0D,>54,>04,>EF
+       BYTE >0F,>54,>0F,>76,>0D,>C3,>0E,>D6,>02,>B2,>0C,>5C,>0C,>CC,>0F,>FF
 BKOPT  B    @OPTSC
 BKKEYS DATA K.ENTR,BKCONN,K.BACK,BKOPT,K.REDO,BKADD,K.ERAS,BKDEL
        DATA K.BEGN,BKLOAD,K.PROC,BKSAVE,K.QUIT,BKQUIT,0
@@ -565,7 +591,10 @@ OP3    BL   @KEY
        JEQ  OP3
        CI   R0,K.BACK
        JEQ  OP5
-       AI   R0,-'1'
+       CI   R0,K.QUIT
+       JNE  OP3A
+       B    @BKQUIT
+OP3A   AI   R0,-'1'
        CI   R0,NOPT-1
        JH   OP3
        MOV  R0,R4
@@ -603,7 +632,7 @@ FE1    BL   @PRZ
 FE2    BL   @KEY
        MOV  R0,R0
        JEQ  FE2
-       BLWP @>0000
+       B    @BKQUIT
 
 ********************************************************************************
 * APEDSK99 commands of the menus
@@ -661,13 +690,13 @@ VINIT  DECT R10
        MOVB R1,@GRMWA
        SWPB R1
        MOVB R1,@GRMWA
-       LI   R2,64
-VI1    CLR  R1
-       MOVB R1,@VDPWD
-       LI   R3,7
+       LI   R2,64                    * 7 rows each: in rows 0-6, as the lower case
+VI1    LI   R3,7
 VI2    MOVB @GRMRD,@VDPWD
        DEC  R3
        JNE  VI2
+       CLR  R1
+       MOVB R1,@VDPWD
        DEC  R2
        JNE  VI1
        LI   R0,PATTAB+768

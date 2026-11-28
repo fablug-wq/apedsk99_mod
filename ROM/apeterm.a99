@@ -179,6 +179,8 @@ GOTERM CLR  @>6002
        B    @TERM
 GOBOOK CLR  @>6000
        B    @BOOKSC
+GOQUIT CLR  @>6000
+       B    @BKQUIT
 
 * R2 bytes from address R0 of bank R3 (its switch address) to R1, back to bank R4
 BKCOPY CLR  *R3

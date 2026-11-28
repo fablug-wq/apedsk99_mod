@@ -137,6 +137,10 @@ THANG  LI   R0,>7300
        JNE  TH9
        BL   @F80OFF
 TH9    B    @GOBOOK
+* FCTN-= or Q: hang up, then the F18A reset and the title screen (bank 0)
+TQUIT  LI   R0,>7300
+       BL   @NETCMD
+       B    @GOQUIT
 
 * the message R1 alone on the status row
 SRMSG  DECT R10
@@ -182,6 +186,8 @@ AR9    B    *R11
 TKEY   DECT R10
        MOV  R11,*R10
        MOV  R0,R1
+       CI   R1,K.QUIT
+       JEQ  TQUIT
        CI   R1,K.BACK
        JNE  TK1
        BL   @TMENU
@@ -293,7 +299,11 @@ TMENU  DECT R10
        JNE  TM1
        LI   R0,1
        JMP  TM9
-TM1    CI   R0,'D'
+TM1    CI   R0,'Q'
+       JNE  TM1D
+       B    @TQUIT
+TM1D
+       CI   R0,'D'
        JNE  TM1U
        BL   @XDOWN
        JMP  TM2

@@ -5,7 +5,7 @@ MCLOSD TEXT ' Closed by the BBS. Any key to leave.'
        BYTE 0
 MBAD   TEXT ' Bad answer from the firmware.'
        BYTE 0
-MMENU  TEXT ' H=HANG UP  D=DOWNLOAD  U=UPLOAD'
+MMENU  TEXT ' H=HANG UP D=DOWNLOAD U=UPLOAD Q=QUIT'
        BYTE 0
 MXDN   TEXT ' DOWNLOAD TO:'
        BYTE 0
