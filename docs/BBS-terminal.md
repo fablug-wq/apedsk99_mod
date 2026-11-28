@@ -59,7 +59,7 @@ Sources:
 - texts in `ROM/text_*.a99` (menus) and `ROM/term_*.a99` (session);
 - generated: `font.a99` (`font.py`, 40/80 columns), `font64.a99` (`font64.py`), `inv0.a99` and `inv1.a99` (`inverse.py`).
 
-It needs the 32K memory expansion and the firmware of this branch, and works with either APEDSK99 DSR. In the cartridge menu it is APEDSK TERMINAL. The screens below are named as in the English ROM.
+It needs the 32K memory expansion and the firmware of this branch, and works with either APEDSK99 DSR: XMODEM uses the subprograms >14 and >15, which both have (APEDSKPR drops only >16). All the tests pass with both: `APEDSK_DSR=APEDSKPR.DSR` makes the co-simulation start with the printer DSR. In the cartridge menu it is APEDSK TERMINAL. The screens below are named as in the English ROM.
 
 ### Using it
 

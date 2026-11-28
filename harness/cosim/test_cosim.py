@@ -67,7 +67,10 @@ class Rig:
         self.sd, self.ftp = os.path.join(self.dir, "sd"), os.path.join(self.dir, "ftp")
         os.makedirs(os.path.join(self.sd, "DISKS"))
         os.makedirs(self.ftp)
-        shutil.copy(os.path.join(REPO, "SD", "APEDSK99.DSR"), self.sd)
+        # the firmware starts with APEDSK99.DSR: APEDSK_DSR=APEDSKPR.DSR puts the
+        # printer DSR there instead, to run the same tests with it
+        shutil.copy(os.path.join(REPO, "SD", os.environ.get("APEDSK_DSR", "APEDSK99.DSR")),
+                    os.path.join(self.sd, "APEDSK99.DSR"))
         with open(os.path.join(self.sd, "CALLerr.txt"), "w") as f:
             f.write("".join(("* error %d" % i).ljust(16) for i in range(16)))
         for n in (1, 2, 3):
