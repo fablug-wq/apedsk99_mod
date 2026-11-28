@@ -46,10 +46,12 @@ def blank_dsk(name):
 
 
 def extended_basic():
-    """the Extended BASIC cartridge: XB_CART, else js99er's library (not in the copy
-    ti99-headless 0.2.2 carries, but in a js99er clone of an older setup)"""
+    """the Extended BASIC cartridge: XB_CART, else the one ti99-headless carries
+    (0.2.3 or later), else js99er's library of an older setup"""
     if os.environ.get("XB_CART"):
         return os.environ["XB_CART"]
+    if hasattr(th, "cartridge"):
+        return th.cartridge("extended_basic")
     tail = os.path.join("src", "assets", "software", "extended_basic.rpk")
     for root in (th.setup_env.js99er_dir(),
                  os.path.join(os.environ.get("TI99HEADLESS", ""), "vendor", "js99er")):

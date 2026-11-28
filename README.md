@@ -12,7 +12,7 @@ A modification of [APEDSK99](https://github.com/jambuur/APEDSK99) by Jochen Buur
 
 The firmware is compatible with the existing DSRs, and printing, `FGET`, `FPUT` and `TIME` keep working, also during a telnet session. It adds about 390 bytes of flash (about 440 left on the Uno). Details: [Network terminal commands](#network-terminal-commands-work-in-progress) below.
 
-To try it without the hardware: `harness/run.sh` (needs g++ and Python 3), or the co-simulation in `harness/cosim` and `ROM/test_rom.py` (needs [ti99-headless](https://github.com/fablug-wq/ti99-headless) 0.2.0 or later). On the hardware: the Extended BASIC test program `NETTEST`, see [Hardware test](docs/BBS-terminal.md#hardware-test-nettest).
+To try it without the hardware: `harness/run.sh` (needs g++ and Python 3), or the co-simulation in `harness/cosim` and `ROM/test_rom.py` (needs [ti99-headless](https://github.com/fablug-wq/ti99-headless) 0.2.3 or later). On the hardware: the Extended BASIC test program `NETTEST`, see [Hardware test](docs/BBS-terminal.md#hardware-test-nettest).
 
 ## The virtual printer (also in `main`)
 
